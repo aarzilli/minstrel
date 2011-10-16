@@ -2,10 +2,51 @@
 #include <gst/gst.h>
 #include <tag_c.h>
 
+GMainLoop *loop = NULL;
+
+static gboolean bus_callback(GstBus *bus, GstMessage *message, gpointer data) {
+	switch(GST_MESSAGE_TYPE(message)) {
+		case GST_MESSAGE_ERROR: {
+			GError *err;
+			gchar *debug;
+			
+			gst_message_parse_error(message, &err, &debug);
+			printf("Error: %s\n", err->message);
+			g_error_free(err);
+			g_free(debug);
+			
+			g_main_loop_quit(loop);
+			break;
+		}
+		
+		case GST_MESSAGE_EOS:
+			printf("\n");
+			//TODO: play next item from queue?
+			g_main_loop_quit(loop);
+			break;
+			
+		default:
+			// unhandled message
+			break;
+	}
+	
+	return TRUE;
+}
+
+static gboolean cb_print_position(GstElement *pipeline) {
+	GstFormat fmt = GST_FORMAT_TIME;
+	gint64 pos, len;
+	if (gst_element_query_position(pipeline, &fmt, &pos) && gst_element_query_duration(pipeline, &fmt, &len)) {
+		g_print("Time: %" GST_TIME_FORMAT " / %" GST_TIME_FORMAT "\r", GST_TIME_ARGS(pos), GST_TIME_ARGS(len));
+	}
+	
+	return TRUE;
+}
+
 int main(int argc, char *argv[]) {
 	/* init GStreamer */
 	gst_init (&argc, &argv);
-	GMainLoop *loop = g_main_loop_new(NULL, FALSE);
+	loop = g_main_loop_new(NULL, FALSE);
 	
 	/* make sure we have a URI */
 	if (argc != 2) {
@@ -42,31 +83,28 @@ int main(int argc, char *argv[]) {
 	taglib_tag_free_strings();
 	taglib_file_free(file);
 	
-	exit(EXIT_SUCCESS);
-	
 	/* set up gstreamer */
 	GstElement *play = gst_element_factory_make("playbin", "play");
 	g_object_set (G_OBJECT(play), "uri", argv[1], NULL);
 	
-	/*bus = gst_pipeline_get_bus(GST_PIPELINE(play));
-	gst_bus_add_watch (bus, my_bus_callback, loop);
-	gst_object_unref(bus);*/
+	GstBus *bus = gst_pipeline_get_bus(GST_PIPELINE(play));
+	gst_bus_add_watch (bus, bus_callback, loop);
+	gst_object_unref(bus);
 	
 	gst_element_set_state(play, GST_STATE_PLAYING);
 	
-	/* now run */
+	g_timeout_add(1000, (GSourceFunc)cb_print_position, play);
+	
 	g_main_loop_run(loop);
 	
 	/* also clean up */
 	gst_element_set_state(play, GST_STATE_NULL);
-	gst_object_unref(GST_OBJECT (play));
+	gst_object_unref(GST_OBJECT(play));
 	
 	return 0;
 }
 
 //TODO:
-// - Display mp3 informations
-// - Display progress
 // - indexing a library
 // - random selection queue
 // - remote control through a unix domain socket
