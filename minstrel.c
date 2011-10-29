@@ -1,12 +1,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <ctype.h>
 
 #include <gst/gst.h>
 #include <tag_c.h>
 #include <sqlite3.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <magic.h>
 
 GMainLoop *loop = NULL;
 
@@ -49,6 +51,13 @@ static gboolean cb_print_position(GstElement *pipeline) {
 	return TRUE;
 }
 
+static void oomp(void *ptr) {
+	if (ptr == NULL) {
+		perror("Out of memory");
+		exit(EXIT_FAILURE);
+	}
+}
+
 static void usage(void) {
 	fprintf(stderr, "minstrel [command] [arguments]\n");
 	fprintf(stderr, "commands:\n");
@@ -86,18 +95,11 @@ static sqlite3 *open_or_create_index_db(void) {
 	{
 		char *index_file_name;
 		asprintf(&index_file_name, "%s/.index", getenv("HOME"));
-		
-		if (index_file_name == NULL) {
-			fprintf(stderr, "Out of memory");
-			exit(EXIT_FAILURE);
-		}
+		oomp(index_file_name);
 		
 		r = sqlite3_open_v2(index_file_name, &index_db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, NULL);
-		
-		if (index_db == NULL) {
-			fprintf(stderr, "Out of memory");
-			exit(EXIT_FAILURE);
-		}
+
+		oomp(index_db);
 		
 		if (r != SQLITE_OK) {
 			fprintf(stderr, "Failed to open/create index file: %s\n", sqlite3_errmsg(index_db));
@@ -142,7 +144,52 @@ open_or_create_index_db_sqlite3_failure:
 	exit(EXIT_FAILURE);
 }
 
-static void index_directory(sqlite3 *index_db, char *dir_name) {
+static bool strstart(const char *haystack, const char *needle) {
+    return strncmp(needle, haystack, strlen(needle)) == 0;
+}
+
+const char *KNOWN_AUDIO_EXTENSIONS[] = { "aif", "aiff", "m4a", "mid", "mp3", "mpa", "ra", "wav", "wma", "aac", "mp4", "m4p", "m4r", "3gp", "ogg", "oga", "au", "3ga", "aifc", "aifr", "alac", "caf", "caff" };
+
+static bool should_autoindex_file(const char *full_file_name, magic_t magic_cookie) {
+	const char *magic_type = magic_file(magic_cookie, full_file_name);
+	if (strstart(magic_type, "audio")) return true;
+	if (strcmp(magic_type, "application/ogg") == 0) return true;
+	
+	//printf("Discarded by audio check %s\n", magic_type);
+	if (strcmp(magic_type, "application/octet-stream") == 0) {
+		//printf("Checking extension\n");
+		char *dot = strrchr(full_file_name, '.');
+		if (dot != NULL) {
+			char *ext = strdup(dot+1);
+			oomp(ext);
+			
+			for (char *c = ext; *c != '\0'; ++c) {
+				*c = tolower(*c);
+			}
+			
+			//printf("Checking extension: %s\n", ext);
+			
+			bool r = false;
+			
+			for (int i = 0; i < sizeof(KNOWN_AUDIO_EXTENSIONS)/sizeof(const char *); ++i) {
+				if (strcmp(KNOWN_AUDIO_EXTENSIONS[i], ext) == 0) {
+					r = true;
+					break;
+				}
+			}
+			
+			free(ext);
+			return r;
+		}
+	}
+	
+	return false;
+}
+
+static void index_file(sqlite3 *index_db, const char *filename) {
+}
+
+static void index_directory(sqlite3 *index_db, char *dir_name, magic_t magic_cookie) {
 	DIR *dir = opendir(dir_name);
 	if (dir == NULL) {
 		fprintf(stderr, "Can not index %s, can not open directory\n", dir_name);
@@ -154,14 +201,22 @@ static void index_directory(sqlite3 *index_db, char *dir_name) {
 		if (curent->d_type == DT_DIR) {
 			char *new_dir_name;
 			asprintf(&new_dir_name, "%s/%s", dir_name, curent->d_name);
-			if (new_dir_name == NULL) {
-				perror("Out of memory");
-				exit(EXIT_FAILURE);
-			}
-			index_directory(index_db, new_dir_name);
+			oomp(new_dir_name);
+			index_directory(index_db, new_dir_name, magic_cookie);
 			free(new_dir_name);
 		} else if (curent->d_type == DT_REG) {
-			printf("%s/%s\n", dir_name, curent->d_name);
+			char *full_file_name;
+			
+			asprintf(&full_file_name, "%s/%s", dir_name, curent->d_name);
+			oomp(full_file_name);
+			
+			if (should_autoindex_file(full_file_name, magic_cookie)) {
+				index_file(index_db, full_file_name);
+			} else {
+				fprintf(stderr, "Didn't add %s to index, add manually if desired\n", full_file_name);
+			}
+			
+			free(full_file_name);
 			//TODO: check that it is a multimedia file, run tags on it and add to index
 		}
 		// things that are not regular files or directories are ignored
@@ -173,10 +228,26 @@ static void index_directory(sqlite3 *index_db, char *dir_name) {
 static void index_command(char *dirs[], int dircount) {
 	sqlite3 *index_db = open_or_create_index_db();
 	
+	magic_t cookie = magic_open(MAGIC_SYMLINK | MAGIC_PRESERVE_ATIME | MAGIC_MIME_TYPE | MAGIC_ERROR | MAGIC_NO_CHECK_ASCII | MAGIC_NO_CHECK_APPTYPE | MAGIC_NO_CHECK_COMPRESS | MAGIC_NO_CHECK_ELF | MAGIC_NO_CHECK_FORTRAN | MAGIC_NO_CHECK_TAR | MAGIC_NO_CHECK_TOKENS | MAGIC_NO_CHECK_TROFF);
+	
+#ifdef MAGIC
+	int magic_r = magic_load(cookie, MAGIC);
+#else
+	int magic_r = magic_load(cookie, "/usr/share/misc/magic");
+#endif
+
+	if (magic_r == -1) {
+		perror("Failed to open magic file");
+		exit(EXIT_FAILURE);
+	}
+	
 	for (int i = 0; i < dircount; ++i) {
 		printf("Indexing %s\n", dirs[i]);
-		index_directory(index_db, dirs[i]);
+		//TODO: check if this is a directory, if not call index_file
+		index_directory(index_db, dirs[i], cookie);
 	}
+	
+	magic_close(cookie);
 
 	sqlite3_close(index_db);
 }
