@@ -1,5 +1,5 @@
 CFLAGS=`pkg-config --cflags gstreamer-0.10` `pkg-config --cflags taglib_c` -Wall -D_FORTIFY_SOURCE=2 -g -D_GNU_SOURCE --std=c99
-LIBS=`pkg-config --libs gstreamer-0.10` `pkg-config --libs taglib_c` -lsqlite3 -lmagic
+LIBS=`pkg-config --libs gstreamer-0.10` `pkg-config --libs taglib_c` -lsqlite3
 OBJS=minstrel.o
 
 all: minstrel

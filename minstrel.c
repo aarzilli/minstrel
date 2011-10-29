@@ -150,46 +150,64 @@ static bool strstart(const char *haystack, const char *needle) {
 
 const char *KNOWN_AUDIO_EXTENSIONS[] = { "aif", "aiff", "m4a", "mid", "mp3", "mpa", "ra", "wav", "wma", "aac", "mp4", "m4p", "m4r", "3gp", "ogg", "oga", "au", "3ga", "aifc", "aifr", "alac", "caf", "caff" };
 
-static bool should_autoindex_file(const char *full_file_name, magic_t magic_cookie) {
-	const char *magic_type = magic_file(magic_cookie, full_file_name);
-	if (strstart(magic_type, "audio")) return true;
-	if (strcmp(magic_type, "application/ogg") == 0) return true;
+static bool should_autoindex_file(const char *full_file_name) {
+	char *dot = strrchr(full_file_name, '.');
+	if (dot == NULL) return false;
 	
-	//printf("Discarded by audio check %s\n", magic_type);
-	if (strcmp(magic_type, "application/octet-stream") == 0) {
-		//printf("Checking extension\n");
-		char *dot = strrchr(full_file_name, '.');
-		if (dot != NULL) {
-			char *ext = strdup(dot+1);
-			oomp(ext);
-			
-			for (char *c = ext; *c != '\0'; ++c) {
-				*c = tolower(*c);
-			}
-			
-			//printf("Checking extension: %s\n", ext);
-			
-			bool r = false;
-			
-			for (int i = 0; i < sizeof(KNOWN_AUDIO_EXTENSIONS)/sizeof(const char *); ++i) {
-				if (strcmp(KNOWN_AUDIO_EXTENSIONS[i], ext) == 0) {
-					r = true;
-					break;
-				}
-			}
-			
-			free(ext);
-			return r;
+	char *ext = strdup(dot+1);
+	oomp(ext);
+	
+	for (char *c = ext; *c != '\0'; ++c) {
+		*c = tolower(*c);
+	}
+	
+	//printf("Checking extension: %s\n", ext);
+	
+	bool r = false;
+	
+	for (int i = 0; i < sizeof(KNOWN_AUDIO_EXTENSIONS)/sizeof(const char *); ++i) {
+		if (strcmp(KNOWN_AUDIO_EXTENSIONS[i], ext) == 0) {
+			r = true;
+			break;
 		}
 	}
 	
-	return false;
+	free(ext);
+	return r;
+}
+
+static void index_file_ex(sqlite3 *index_db, const char *filename, const char *title, const char *artist, const char *album, int year, const char *comment, int track, const char *genre) {
+	//TODO
 }
 
 static void index_file(sqlite3 *index_db, const char *filename) {
+	TagLib_File *file = taglib_file_new(filename);
+	if (file == NULL) {
+		//TODO: support m4a tag format
+		fprintf(stderr, "Couldn't get tag information for %s\n", filename);
+		index_file_ex(index_db, filename, "", "", "", -1, "", -1, "");
+		return;
+	}
+	
+	TagLib_Tag *tag = taglib_file_tag(file);
+
+	if (tag != NULL) {
+		index_file_ex(index_db,
+			filename,
+			taglib_tag_title(tag),
+			taglib_tag_artist(tag),
+			taglib_tag_album(tag),
+			taglib_tag_year(tag),
+			taglib_tag_comment(tag),
+			taglib_tag_track(tag),
+			taglib_tag_genre(tag));
+	}
+	
+	taglib_tag_free_strings();
+	taglib_file_free(file);
 }
 
-static void index_directory(sqlite3 *index_db, char *dir_name, magic_t magic_cookie) {
+static void index_directory(sqlite3 *index_db, char *dir_name) {
 	DIR *dir = opendir(dir_name);
 	if (dir == NULL) {
 		fprintf(stderr, "Can not index %s, can not open directory\n", dir_name);
@@ -202,7 +220,7 @@ static void index_directory(sqlite3 *index_db, char *dir_name, magic_t magic_coo
 			char *new_dir_name;
 			asprintf(&new_dir_name, "%s/%s", dir_name, curent->d_name);
 			oomp(new_dir_name);
-			index_directory(index_db, new_dir_name, magic_cookie);
+			index_directory(index_db, new_dir_name);
 			free(new_dir_name);
 		} else if (curent->d_type == DT_REG) {
 			char *full_file_name;
@@ -210,7 +228,7 @@ static void index_directory(sqlite3 *index_db, char *dir_name, magic_t magic_coo
 			asprintf(&full_file_name, "%s/%s", dir_name, curent->d_name);
 			oomp(full_file_name);
 			
-			if (should_autoindex_file(full_file_name, magic_cookie)) {
+			if (should_autoindex_file(full_file_name)) {
 				index_file(index_db, full_file_name);
 			} else {
 				fprintf(stderr, "Didn't add %s to index, add manually if desired\n", full_file_name);
@@ -227,28 +245,13 @@ static void index_directory(sqlite3 *index_db, char *dir_name, magic_t magic_coo
 
 static void index_command(char *dirs[], int dircount) {
 	sqlite3 *index_db = open_or_create_index_db();
-	
-	magic_t cookie = magic_open(MAGIC_SYMLINK | MAGIC_PRESERVE_ATIME | MAGIC_MIME_TYPE | MAGIC_ERROR | MAGIC_NO_CHECK_ASCII | MAGIC_NO_CHECK_APPTYPE | MAGIC_NO_CHECK_COMPRESS | MAGIC_NO_CHECK_ELF | MAGIC_NO_CHECK_FORTRAN | MAGIC_NO_CHECK_TAR | MAGIC_NO_CHECK_TOKENS | MAGIC_NO_CHECK_TROFF);
-	
-#ifdef MAGIC
-	int magic_r = magic_load(cookie, MAGIC);
-#else
-	int magic_r = magic_load(cookie, "/usr/share/misc/magic");
-#endif
 
-	if (magic_r == -1) {
-		perror("Failed to open magic file");
-		exit(EXIT_FAILURE);
-	}
-	
 	for (int i = 0; i < dircount; ++i) {
 		printf("Indexing %s\n", dirs[i]);
 		//TODO: check if this is a directory, if not call index_file
-		index_directory(index_db, dirs[i], cookie);
+		index_directory(index_db, dirs[i]);
 	}
 	
-	magic_close(cookie);
-
 	sqlite3_close(index_db);
 }
 
@@ -274,34 +277,8 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 	
-	TagLib_File *file = taglib_file_new(argv[1]+6);
-	TagLib_Tag *tag = taglib_file_tag(file);
-	const TagLib_AudioProperties *properties = taglib_file_audioproperties(file);
 	
-	if(tag != NULL) {
-		printf("-- TAG --\n");
-		printf("title   - \"%s\"\n", taglib_tag_title(tag));
-		printf("artist  - \"%s\"\n", taglib_tag_artist(tag));
-		printf("album   - \"%s\"\n", taglib_tag_album(tag));
-		printf("year    - \"%i\"\n", taglib_tag_year(tag));
-		printf("comment - \"%s\"\n", taglib_tag_comment(tag));
-		printf("track   - \"%i\"\n", taglib_tag_track(tag));
-		printf("genre   - \"%s\"\n", taglib_tag_genre(tag));
-	}
-	
-	if(properties != NULL) {
-		int seconds = taglib_audioproperties_length(properties) % 60;
-		int minutes = (taglib_audioproperties_length(properties) - seconds) / 60;
-		
-		printf("-- AUDIO --\n");
-		printf("bitrate     - %i\n", taglib_audioproperties_bitrate(properties));
-		printf("sample rate - %i\n", taglib_audioproperties_samplerate(properties));
-		printf("channels    - %i\n", taglib_audioproperties_channels(properties));
-		printf("length      - %i:%02i\n", minutes, seconds);
-	}
-	
-	taglib_tag_free_strings();
-	taglib_file_free(file);
+
 	
 	GstElement *play = gst_element_factory_make("playbin", "play");
 	g_object_set (G_OBJECT(play), "uri", argv[1], NULL);
