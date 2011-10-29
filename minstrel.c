@@ -3,8 +3,8 @@
 #include <stdbool.h>
 #include <ctype.h>
 
+#include <libavformat/avformat.h>
 #include <gst/gst.h>
-#include <tag_c.h>
 #include <sqlite3.h>
 #include <sys/types.h>
 #include <dirent.h>
@@ -81,20 +81,19 @@ static bool sqlite3_has_table(sqlite3 *db, const char *name) {
 	
 sqlite3_has_table_failure:
 
-	fprintf(stderr, "Error preparing has_table statement: %s\n", sqlite3_errmsg(db));
-	sqlite3_finalize(statement);
+	fprintf(stderr, "Sqlite3 error on has_table: %s\n", sqlite3_errmsg(db));
 	if (statement == NULL) sqlite3_finalize(statement);
 	exit(EXIT_FAILURE);
 }
 
-static sqlite3 *open_or_create_index_db(void) {
+static sqlite3 *open_or_create_index_db(bool truncate_tunes) {
 	char *errmsg;
 	int r;
 	sqlite3 *index_db;
 	
 	{
 		char *index_file_name;
-		asprintf(&index_file_name, "%s/.index", getenv("HOME"));
+		asprintf(&index_file_name, "%s/.minstrel", getenv("HOME"));
 		oomp(index_file_name);
 		
 		r = sqlite3_open_v2(index_file_name, &index_db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, NULL);
@@ -118,21 +117,21 @@ static sqlite3 *open_or_create_index_db(void) {
 	sqlite3_exec(index_db, "CREATE TABLE IF NOT EXISTS config(key text, value text);", NULL, NULL, &errmsg);
 	if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
 	
-	//TODO: initialize configuration
-	
-	sqlite3_exec(index_db, "CREATE TABLE IF NOT EXISTS tunes(id integer primary key autoincrement, title text, artist test, album text, year integer, comment text, track integer, genre text);", NULL, NULL, &errmsg);
+	sqlite3_exec(index_db, "CREATE TABLE IF NOT EXISTS tunes(id integer primary key autoincrement, album text, artist text, album_artist text, comment text, composer text, copyright text, date text, disc text, encoder text, genre text, performer text, publisher text, title text, track text);", NULL, NULL, &errmsg);
 	if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
 
 	if (!sqlite3_has_table(index_db, "ridx")) {
 		sqlite3_exec(index_db, "CREATE VIRTUAL TABLE ridx USING fts3(id integer, any text, foreign key (id) references tunes(id) on delete cascade deferrable initially deferred);", NULL, NULL, &errmsg);
 		if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
 	}
-	
-	sqlite3_exec(index_db, "DELETE FROM tunes;", NULL, NULL, &errmsg);
-	if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
-	
-	sqlite3_exec(index_db, "DELETE FROM ridx;", NULL, NULL, &errmsg);
-	if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
+
+	if (truncate_tunes) {
+		sqlite3_exec(index_db, "DELETE FROM tunes;", NULL, NULL, &errmsg);
+		if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
+		
+		sqlite3_exec(index_db, "DELETE FROM ridx;", NULL, NULL, &errmsg);
+		if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
+	}
 
 	return index_db;
 	
@@ -176,38 +175,125 @@ static bool should_autoindex_file(const char *full_file_name) {
 	return r;
 }
 
-static void index_file_ex(sqlite3 *index_db, const char *filename, const char *title, const char *artist, const char *album, int year, const char *comment, int track, const char *genre) {
-	//TODO
+static void index_file_ex(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stmt *rinsert, const char *filename,
+		const char *album, const char *artist, const char *album_artist,
+		const char *comment, const char *composer, const char *copyright,
+		const char *date, const char *disc, const char *encoder,
+		const char *genre, const char *performer, const char *publisher,
+		const char *title, const char *track) {
+		
+	if (sqlite3_reset(insert) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_reset(rinsert) != SQLITE_OK) goto index_file_ex_failure;
+	
+	if (sqlite3_bind_text(insert, 1, album, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 2, artist, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 3, album_artist, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 4, comment, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 5, composer, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 6, copyright, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 7, date, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 8, disc, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 9, encoder, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 10, performer, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 11, publisher, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 12, title, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 13, track, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	
+	if (sqlite3_step(insert) != SQLITE_DONE) goto index_file_ex_failure;
+	
+	char *text;
+	asprintf(&text, "%s %s %s %s %s %s %s %s %s %s %s %s %s", album, artist, album_artist, comment, composer, copyright, date, disc, encoder, performer, publisher, title, track);
+	oomp(text);
+	
+	if (sqlite3_bind_int64(rinsert, 1, sqlite3_last_insert_rowid(index_db)) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(rinsert, 2, text, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_step(rinsert) != SQLITE_DONE) goto index_file_ex_failure;
+	
+	free(text);
+	
+	return;
+	
+index_file_ex_failure:
+
+	fprintf(stderr, "Sqlite3 error in index_file_ex: %s\n", sqlite3_errmsg(index_db));
+	exit(EXIT_FAILURE);
 }
 
-static void index_file(sqlite3 *index_db, const char *filename) {
-	TagLib_File *file = taglib_file_new(filename);
-	if (file == NULL) {
-		//TODO: support m4a tag format
-		fprintf(stderr, "Couldn't get tag information for %s\n", filename);
-		index_file_ex(index_db, filename, "", "", "", -1, "", -1, "");
-		return;
-	}
-	
-	TagLib_Tag *tag = taglib_file_tag(file);
-
-	if (tag != NULL) {
-		index_file_ex(index_db,
-			filename,
-			taglib_tag_title(tag),
-			taglib_tag_artist(tag),
-			taglib_tag_album(tag),
-			taglib_tag_year(tag),
-			taglib_tag_comment(tag),
-			taglib_tag_track(tag),
-			taglib_tag_genre(tag));
-	}
-	
-	taglib_tag_free_strings();
-	taglib_file_free(file);
+static const char *tag_get(AVFormatContext *fmt_ctx, const char *key) {
+	AVMetadataTag *tag = NULL;
+	tag = av_metadata_get(fmt_ctx->metadata, key, NULL, AV_METADATA_IGNORE_SUFFIX);
+	if (tag == NULL) return NULL;
+	return tag->value;
 }
 
-static void index_directory(sqlite3 *index_db, char *dir_name) {
+static void index_file(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stmt *rinsert, const char *filename) {
+	AVFormatContext *fmt_ctx = NULL;
+	
+	if (av_open_input_file(&fmt_ctx, filename, NULL, 0, NULL)) {
+		fprintf(stderr, "Failed to open %s\n", filename);
+		exit(EXIT_FAILURE);
+	}
+	
+	av_metadata_conv(fmt_ctx, NULL, fmt_ctx->iformat->metadata_conv);
+	
+	const char *album = tag_get(fmt_ctx, "album");
+	const char *artist = tag_get(fmt_ctx, "artist");
+	const char *album_artist = tag_get(fmt_ctx, "album_artist");
+	const char *comment = tag_get(fmt_ctx, "comment");
+	const char *composer = tag_get(fmt_ctx, "composer");
+	const char *copyright = tag_get(fmt_ctx, "copyright");
+	const char *date = tag_get(fmt_ctx, "date");
+	const char *disc = tag_get(fmt_ctx, "disc");
+	const char *encoder = tag_get(fmt_ctx, "encoder");
+	const char *genre = tag_get(fmt_ctx, "genre");
+	const char *performer = tag_get(fmt_ctx, "performer");
+	const char *publisher = tag_get(fmt_ctx, "publisher");
+	const char *title = tag_get(fmt_ctx, "title");
+	const char *track = tag_get(fmt_ctx, "track");
+	
+	if (artist == NULL) artist = album_artist;
+	if (artist == NULL) artist = composer;
+	if (artist == NULL) artist = copyright;
+	if (artist == NULL) artist = performer;
+	if (artist == NULL) artist = publisher;
+	
+	if (title == NULL) {
+		char *slash = strrchr(filename, '/');
+		if (slash != NULL) {
+			title = slash+1;
+		}
+	}
+	
+#ifdef SPAM_DURING_INDEX
+	printf("FILE %s:\n", filename);
+	printf("   album: %s\n", album);
+	printf("   artist: %s\n", artist);
+	printf("   album_artist: %s\n", album_artist);
+	printf("   comment: %s\n", comment);
+	printf("   composer: %s\n", composer);
+	printf("   copyright: %s\n", copyright);
+	printf("   date: %s\n", date);
+	printf("   disc: %s\n", disc);
+	printf("   encoder: %s\n", encoder);
+	printf("   genre: %s\n", genre);
+	printf("   performer: %s\n", performer);
+	printf("   publisher: %s\n", publisher);
+	printf("   title: %s\n", title);
+	printf("   track: %s\n", track);
+#endif
+
+	index_file_ex(index_db, insert, rinsert, filename,
+		album, artist, album_artist,
+		comment, composer, copyright,
+		date, disc, encoder,
+		genre, performer, publisher,
+		title, track);
+		
+	
+	av_close_input_file(fmt_ctx);
+}
+
+static void index_directory(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stmt *rinsert, char *dir_name) {
 	DIR *dir = opendir(dir_name);
 	if (dir == NULL) {
 		fprintf(stderr, "Can not index %s, can not open directory\n", dir_name);
@@ -220,7 +306,7 @@ static void index_directory(sqlite3 *index_db, char *dir_name) {
 			char *new_dir_name;
 			asprintf(&new_dir_name, "%s/%s", dir_name, curent->d_name);
 			oomp(new_dir_name);
-			index_directory(index_db, new_dir_name);
+			index_directory(index_db, insert, rinsert, new_dir_name);
 			free(new_dir_name);
 		} else if (curent->d_type == DT_REG) {
 			char *full_file_name;
@@ -229,7 +315,7 @@ static void index_directory(sqlite3 *index_db, char *dir_name) {
 			oomp(full_file_name);
 			
 			if (should_autoindex_file(full_file_name)) {
-				index_file(index_db, full_file_name);
+				index_file(index_db, insert, rinsert, full_file_name);
 			} else {
 				fprintf(stderr, "Didn't add %s to index, add manually if desired\n", full_file_name);
 			}
@@ -244,13 +330,32 @@ static void index_directory(sqlite3 *index_db, char *dir_name) {
 }
 
 static void index_command(char *dirs[], int dircount) {
-	sqlite3 *index_db = open_or_create_index_db();
+	sqlite3 *index_db = open_or_create_index_db(true);
+	
+	av_register_all();
+	
+	sqlite3_stmt *insert = NULL, *rinsert = NULL;
 
+	int r = sqlite3_prepare_v2(index_db, "insert into tunes(album, artist, album_artist, comment, composer, copyright, date, disc, encoder, genre, performer, publisher, title, track) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", -1, &insert, NULL);
+	if (r != SQLITE_OK) {
+		fprintf(stderr, "Sqlite3 error preparing insert statement: %s\n", sqlite3_errmsg(index_db));
+		exit(EXIT_FAILURE);
+	}
+	
+	r = sqlite3_prepare_v2(index_db, "insert into ridx(id, any) values (?, ?)", -1, &rinsert, NULL);
+	if (r != SQLITE_OK) {
+		fprintf(stderr, "Sqlite3 error preparing rinsert statement: %s\n", sqlite3_errmsg(index_db));
+		exit(EXIT_FAILURE);
+	}
+	
 	for (int i = 0; i < dircount; ++i) {
 		printf("Indexing %s\n", dirs[i]);
 		//TODO: check if this is a directory, if not call index_file
-		index_directory(index_db, dirs[i]);
+		index_directory(index_db, insert, rinsert, dirs[i]);
 	}
+	
+	sqlite3_finalize(insert);
+	sqlite3_finalize(rinsert);
 	
 	sqlite3_close(index_db);
 }
@@ -301,9 +406,12 @@ int main(int argc, char *argv[]) {
 }
 
 //TODO:
-// - indexing a library
 // - random selection queue
-// - control through stdin
-// - remote control through a unix domain socket
 // - remote control through dbus
 // - libnotify interface
+// - remote control through a unix domain socket
+// - add to queue command
+// - clear queue command
+// - search command
+// - query command
+// - restrict command
