@@ -73,7 +73,7 @@ sqlite3 *open_or_create_index_db(bool truncate_tunes) {
 	sqlite3_exec(index_db, "CREATE TABLE IF NOT EXISTS config(key text, value text);", NULL, NULL, &errmsg);
 	if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
 	
-	sqlite3_exec(index_db, "CREATE TABLE IF NOT EXISTS tunes(id integer primary key autoincrement, album text, artist text, album_artist text, comment text, composer text, copyright text, date text, disc text, encoder text, genre text, performer text, publisher text, title text, track text);", NULL, NULL, &errmsg);
+	sqlite3_exec(index_db, "CREATE TABLE IF NOT EXISTS tunes(id integer primary key autoincrement, album text, artist text, album_artist text, comment text, composer text, copyright text, date text, disc text, encoder text, genre text, performer text, publisher text, title text, track text, filename text);", NULL, NULL, &errmsg);
 	if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
 
 	if (!sqlite3_has_table(index_db, "ridx")) {

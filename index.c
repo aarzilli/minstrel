@@ -54,10 +54,17 @@ static void index_file_ex(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stmt 
 	if (sqlite3_bind_text(insert, 7, date, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
 	if (sqlite3_bind_text(insert, 8, disc, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
 	if (sqlite3_bind_text(insert, 9, encoder, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 10, performer, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 11, publisher, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 12, title, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 13, track, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 10, genre, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 11, performer, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 12, publisher, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 13, title, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(insert, 14, track, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	
+	char *fileuri;
+	asprintf(&fileuri, "file://%s", filename);
+	oomp(fileuri);
+	if (sqlite3_bind_text(insert, 15, fileuri, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	free(fileuri);
 	
 	if (sqlite3_step(insert) != SQLITE_DONE) goto index_file_ex_failure;
 	
@@ -142,7 +149,6 @@ static void index_file(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stmt *ri
 		genre, performer, publisher,
 		title, track);
 		
-	
 	av_close_input_file(fmt_ctx);
 }
 
@@ -189,7 +195,7 @@ void index_command(char *dirs[], int dircount) {
 	
 	sqlite3_stmt *insert = NULL, *rinsert = NULL;
 
-	int r = sqlite3_prepare_v2(index_db, "insert into tunes(album, artist, album_artist, comment, composer, copyright, date, disc, encoder, genre, performer, publisher, title, track) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", -1, &insert, NULL);
+	int r = sqlite3_prepare_v2(index_db, "insert into tunes(album, artist, album_artist, comment, composer, copyright, date, disc, encoder, genre, performer, publisher, title, track, filename) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", -1, &insert, NULL);
 	if (r != SQLITE_OK) {
 		fprintf(stderr, "Sqlite3 error preparing insert statement: %s\n", sqlite3_errmsg(index_db));
 		exit(EXIT_FAILURE);
