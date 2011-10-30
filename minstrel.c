@@ -88,6 +88,27 @@ static void usage(void) {
 	//TODO: write
 }
 
+static void g_streamer_init(void) {
+	int argc = 0;
+	char *argv[] = { };
+	
+	gst_init(&argc, &argv);
+	loop = g_main_loop_new(NULL, FALSE);
+}
+
+static void g_streamer_begin(void);
+	play = gst_element_factory_make("playbin2", "play");
+	
+	GstBus *bus = gst_pipeline_get_bus(GST_PIPELINE(play));
+	gst_bus_add_watch(bus, bus_callback, loop);
+	gst_object_unref(bus);
+}
+
+static void g_streamer_end() {
+	gst_element_set_state(play, GST_STATE_NULL);
+	gst_object_unref(GST_OBJECT(play));
+}
+
 int main(int argc, char *argv[]) {
 	if (argc < 2) {
 		usage();
@@ -101,14 +122,10 @@ int main(int argc, char *argv[]) {
 		
 		queue_init();
 		player_index_db = open_or_create_index_db(false);
-				
-		gst_init(&argc, &argv);
-		loop = g_main_loop_new(NULL, FALSE);
-		play = gst_element_factory_make("playbin2", "play");
+	
+		g_streamer_init();
 		
-		GstBus *bus = gst_pipeline_get_bus(GST_PIPELINE(play));
-		gst_bus_add_watch(bus, bus_callback, loop);
-		gst_object_unref(bus);
+		g_streamer_begin();
 		
 		advance_queue(player_index_db);
 		tunes_play(queue_currently_playing());
@@ -117,8 +134,7 @@ int main(int argc, char *argv[]) {
 		
 		g_main_loop_run(loop);
 		
-		gst_element_set_state(play, GST_STATE_NULL);
-		gst_object_unref(GST_OBJECT(play));
+		g_streamer_end();
 	} else {
 		fprintf(stderr, "Unknown command %s\n", argv[1]);
 		exit(EXIT_FAILURE);
