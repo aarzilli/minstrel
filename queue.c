@@ -57,3 +57,10 @@ void advance_queue(sqlite3 *index_db) {
 	queue_append(random_index_item(index_db));
 }
 
+void display_queue(void) {
+	//TODO:
+	// - clear screen
+	// - display last 5 played items (when existing)
+	// - display currently playing item in bold with a prepended '>'
+	// - display up to 5 upcoming items (they must have occupied == true and played == false)
+}
