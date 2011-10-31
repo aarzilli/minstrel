@@ -47,6 +47,37 @@ tunes_play_sqlite3_failure:
 	exit(EXIT_FAILURE);
 }
 
+static void play_pause_action(void) {
+	GstState state, pending;
+	gst_element_get_state(play, &state, &pending, GST_SECOND);
+	
+	if (state == GST_STATE_PLAYING) {
+		gst_element_set_state(play, GST_STATE_PAUSED);
+	} else if (state == GST_STATE_PAUSED) {
+		gst_element_set_state(play, GST_STATE_PLAYING);
+	} else {
+		tunes_play(queue_currently_playing());
+	}
+
+}
+
+static void stop_action(void) {
+	gst_element_set_state(play, GST_STATE_NULL);
+	printf("\n");
+}
+
+static void next_action(void) {
+	printf("\n");
+	advance_queue(player_index_db);
+	tunes_play(queue_currently_playing());
+}
+
+static void prev_action(void) {
+	if (queue_to_prev()) {
+		tunes_play(queue_currently_playing());
+	}
+}
+
 static gboolean bus_callback(GstBus *bus, GstMessage *message, gpointer data) {
 	switch(GST_MESSAGE_TYPE(message)) {
 		case GST_MESSAGE_ERROR: {
@@ -63,11 +94,7 @@ static gboolean bus_callback(GstBus *bus, GstMessage *message, gpointer data) {
 		}
 		
 		case GST_MESSAGE_EOS:
-			printf("\n");
-			
-			advance_queue(player_index_db);
-			tunes_play(queue_currently_playing());
-
+			next_action();
 			break;
 			
 		default:
@@ -141,9 +168,13 @@ static void dbus_signal_callback(GDBusProxy *proxy, gchar *sender_name, gchar *s
 	//printf("\nPressed key: %s\n", key);
 	
 	if (strcmp(key, "Play") == 0) {
+		play_pause_action();
 	} else if (strcmp(key, "Stop") == 0) {
+		stop_action();
 	} else if (strcmp(key, "Next") == 0) {
+		next_action();
 	} else if (strcmp(key, "Previous") == 0) {
+		prev_action();
 	}
 }
 

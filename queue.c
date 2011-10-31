@@ -15,6 +15,7 @@ void queue_init(void) {
 }
 
 void queue_append(int64_t id) {
+	printf("appending to %d\n", queue_position);
 	queue[queue_position].occupied = true;
 	queue[queue_position].played = false;
 	queue[queue_position].id = id;
@@ -43,8 +44,10 @@ random_index_item_sqlite3_failure:
 }
 
 void advance_queue(sqlite3 *index_db) {
-	if (queue_currently_playing_idx >= 0)
+	if (queue_currently_playing_idx >= 0) {
+		printf("setting played to true for %d\n", queue_currently_playing_idx);
 		queue[queue_currently_playing_idx].played = true;
+	}
 		
 	queue_currently_playing_idx = (queue_currently_playing_idx + 1) % QUEUE_LENGTH;
 	
@@ -63,4 +66,17 @@ void display_queue(void) {
 	// - display last 5 played items (when existing)
 	// - display currently playing item in bold with a prepended '>'
 	// - display up to 5 upcoming items (they must have occupied == true and played == false)
+}
+
+static bool queue_could_be_prev(int idx) {
+	if (!queue[idx].occupied) return false;
+	if (!queue[idx].played) return false;
+	return true;
+}
+
+bool queue_to_prev(void) {
+	int prev_idx = (queue_currently_playing_idx - 1) % QUEUE_LENGTH;
+	if (!queue_could_be_prev(prev_idx)) return false;
+	queue_currently_playing_idx = prev_idx;
+	return true;
 }
