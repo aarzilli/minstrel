@@ -10,6 +10,7 @@
 #include "util.h"
 #include "index.h"
 #include "queue.h"
+#include "conn.h"
 
 #ifdef USE_LIBNOTIFY
 #include <libnotify/notify.h>
@@ -245,6 +246,43 @@ static void dbus_register(void) {
 	g_signal_connect(proxy, "g-signal", G_CALLBACK(dbus_signal_callback), NULL);
 }
 
+static void start_player(void) {
+	int fd = conn();
+	if (fd >= 0) {
+		fprintf(stderr, "There is already another instance of minstrel running\n");
+		close(fd);
+		exit(EXIT_FAILURE);
+	}
+	
+	term_init();
+	queue_init();
+	player_index_db = open_or_create_index_db(false);
+	
+#ifdef USE_LIBNOTIFY
+	if (!notify_init(APPNAME)) {
+		fprintf(stderr, "Notify initialization failed\n");
+	}
+	notification = notify_notification_new("blap", "", NULL, NULL);
+#endif
+	
+	if (sqlite3_prepare_v2(player_index_db, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename from tunes where id = ?", -1, &tune_select, NULL) != SQLITE_OK) {
+		fprintf(stderr, "Failed to create index access query: %s\n", sqlite3_errmsg(player_index_db));
+		exit(EXIT_FAILURE);
+	}
+
+	g_streamer_init();
+	g_streamer_begin();
+	dbus_register();
+	
+	advance_queue(player_index_db);
+	tunes_play(queue_currently_playing());
+	
+	//TODO: create the server socket and add it to the event loop
+	
+	g_main_loop_run(loop);
+	g_streamer_end();
+}
+
 int main(int argc, char *argv[]) {
 	if (argc < 2) {
 		usage();
@@ -254,60 +292,20 @@ int main(int argc, char *argv[]) {
 	if (strcmp(argv[1], "index") == 0) {
 		index_command(argv+2, argc-2);
 	} else if (strcmp(argv[1], "start") == 0) {
-		//TODO: check if a unix domain socket exists, and if it does quit
-		
-		term_init();
-		queue_init();
-		player_index_db = open_or_create_index_db(false);
-		
-#ifdef USE_LIBNOTIFY
-		if (!notify_init(APPNAME)) {
-			fprintf(stderr, "Notify initialization failed\n");
-		}
-		notification = notify_notification_new("blap", "", NULL, NULL);
-#endif
-		
-		if (sqlite3_prepare_v2(player_index_db, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename from tunes where id = ?", -1, &tune_select, NULL) != SQLITE_OK) {
-			fprintf(stderr, "Failed to create index access query: %s\n", sqlite3_errmsg(player_index_db));
-			exit(EXIT_FAILURE);
-		}
-	
-		g_streamer_init();
-		
-		g_streamer_begin();
-		
-		dbus_register();
-		
-		advance_queue(player_index_db);
-		tunes_play(queue_currently_playing());
-		
-		g_main_loop_run(loop);
-		
-		g_streamer_end();
+		start_player();
 	} else {
 		fprintf(stderr, "Unknown command %s\n", argv[1]);
 		exit(EXIT_FAILURE);
 	}
 	
-#ifdef TOY_COMMENTED
-
-	
-	if (argc != 2) {
-		printf("Usage: %s <URI>\n", argv[0]);
-		return -1;
-	}
-	
-
-#endif
-
 	return 0;
 }
 
 //TODO:
 // - remote control through a unix domain socket
+// - search command
 // - add to queue command
 // - clear queue command
-// - search command
 // - query command
 // - restrict command
 // - auto-enter stop mode

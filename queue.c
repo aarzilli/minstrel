@@ -84,7 +84,7 @@ static void print_tune(sqlite3 *index_db, sqlite3_stmt *tune_select, struct item
 	
 	if (idx >= 0) {
 		printf(" %c %d. %s\n", current ? '>' : ' ', idx, sqlite3_column_text(tune_select, 12));
-		printf(" %c    by %s from %s [%s]\n", current ? '>' : ' ', sqlite3_column_text(tune_select, 1), sqlite3_column_text(tune_select, 0), sqlite3_column_text(tune_select, 13));
+		printf(" %c\tby %s from %s [%s]\n", current ? '>' : ' ', sqlite3_column_text(tune_select, 1), sqlite3_column_text(tune_select, 0), sqlite3_column_text(tune_select, 13));
 	} else {
 		printf("%ld   %s\n", item->id, sqlite3_column_text(tune_select, 12));
 		printf("       by %s from %s [%s]\n", sqlite3_column_text(tune_select, 1), sqlite3_column_text(tune_select, 0), sqlite3_column_text(tune_select, 13));
@@ -129,6 +129,7 @@ void display_queue(sqlite3 *index_db, sqlite3_stmt *tune_select) {
 bool queue_to_prev(void) {
 	int prev_idx = (queue_currently_playing_idx - 1) % QUEUE_LENGTH;
 	if (!queue_could_be_prev(prev_idx)) return false;
+	queue_currently_playing()->played = false;
 	queue_currently_playing_idx = prev_idx;
 	return true;
 }
