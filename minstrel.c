@@ -112,10 +112,20 @@ static gboolean cb_print_position(void *none) {
 	gst_element_get_state(play, &state, &pending, GST_SECOND);
 	if (state != GST_STATE_PLAYING) return TRUE;
 	
-	GstFormat fmt = GST_FORMAT_TIME; //TODO: only display seconds
+	GstFormat fmt = GST_FORMAT_TIME;
 	gint64 pos, len;
 	if (gst_element_query_position(play, &fmt, &pos) && gst_element_query_duration(play, &fmt, &len)) {
-		g_print("Time: %" GST_TIME_FORMAT " / %" GST_TIME_FORMAT "\r", GST_TIME_ARGS(pos), GST_TIME_ARGS(len));
+		int64_t len_secs = len / 1000000000;
+		int64_t pos_secs = pos / 1000000000;
+		
+		int64_t len_mins = len_secs / 60;
+		len_secs %= 60;
+		
+		int64_t pos_mins = pos_secs / 60;
+		pos_secs %= 60;
+		
+		printf("Position %ld:%02ld / %ld:%02ld\r", pos_mins, pos_secs, len_mins, len_secs);
+		fflush(stdout);
 	}
 	
 	return TRUE;
@@ -259,7 +269,6 @@ int main(int argc, char *argv[]) {
 }
 
 //TODO:
-// - better display
 // - libnotify interface
 // - remote control through a unix domain socket
 // - add to queue command
