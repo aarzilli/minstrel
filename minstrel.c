@@ -11,6 +11,10 @@
 #include "index.h"
 #include "queue.h"
 
+#ifdef USE_LIBNOTIFY
+#include <libnotify/notify.h>
+#endif
+
 // for interaction with dbus we need an application name
 #define APPNAME "minstrel"
 
@@ -18,6 +22,28 @@ GMainLoop *loop = NULL;
 GstElement *play = NULL;
 sqlite3 *player_index_db = NULL;
 sqlite3_stmt *tune_select = NULL;
+
+#ifdef USE_LIBNOTIFY
+NotifyNotification *notification;
+#endif
+
+void do_notify(void) {
+#ifdef USE_LIBNOTIFY
+	go_to_tune(player_index_db, tune_select, queue_currently_playing());
+
+	char *text = NULL;
+	asprintf(&text, "%s from %s by %s", sqlite3_column_text(tune_select, 12), sqlite3_column_text(tune_select, 0), sqlite3_column_text(tune_select, 1));
+	oomp(text);
+	notify_notification_update(notification, (const char *)sqlite3_column_text(tune_select, 12), text, NULL);
+	GError *error = NULL;
+	if (!notify_notification_show(notification, &error)) {
+		fprintf(stderr, "Error displaying notification: %s\n", error->message);
+		g_error_free(error);
+		return;
+	}
+	free(text);
+#endif
+}
 
 void tunes_play(struct item *item) {
 	sqlite3_stmt *get_filename = NULL;
@@ -32,6 +58,8 @@ void tunes_play(struct item *item) {
 	
 	gst_element_set_state(play, GST_STATE_READY);
 	display_queue(player_index_db, tune_select);
+	
+	do_notify();
 	
 	g_object_set(G_OBJECT(play), "uri", filename, NULL);
 	gst_element_set_state(play, GST_STATE_PLAYING);
@@ -232,7 +260,14 @@ int main(int argc, char *argv[]) {
 		queue_init();
 		player_index_db = open_or_create_index_db(false);
 		
-		if (sqlite3_prepare_v2(player_index_db, "select album, artist, album_artist, comment, composer, copyright, date, disc, encoder, genre, performer, publisher, title, track, filename from tunes where id = ?", -1, &tune_select, NULL) != SQLITE_OK) {
+#ifdef USE_LIBNOTIFY
+		if (!notify_init(APPNAME)) {
+			fprintf(stderr, "Notify initialization failed\n");
+		}
+		notification = notify_notification_new("blap", "", NULL, NULL);
+#endif
+		
+		if (sqlite3_prepare_v2(player_index_db, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename from tunes where id = ?", -1, &tune_select, NULL) != SQLITE_OK) {
 			fprintf(stderr, "Failed to create index access query: %s\n", sqlite3_errmsg(player_index_db));
 			exit(EXIT_FAILURE);
 		}
@@ -269,7 +304,6 @@ int main(int argc, char *argv[]) {
 }
 
 //TODO:
-// - libnotify interface
 // - remote control through a unix domain socket
 // - add to queue command
 // - clear queue command
