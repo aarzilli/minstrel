@@ -2,6 +2,8 @@
 
 #include <stdlib.h>
 
+#include <termcap.h>
+
 void oomp(void *ptr) {
 	if (ptr == NULL) {
 		perror("Out of memory");
@@ -99,3 +101,9 @@ open_or_create_index_db_sqlite3_failure:
 	exit(EXIT_FAILURE);
 }
 
+void term_init(void) {
+	char *termenv = getenv("TERM");
+	
+	if (termenv == NULL) return;
+	if (tgetent(NULL, termenv) < 0) return;
+}

@@ -21,7 +21,7 @@ void queue_init(void);
 void queue_append(int64_t id);
 struct item *queue_currently_playing(void);
 void advance_queue(sqlite3 *index_db);
-void display_queue(void);
+void display_queue(sqlite3 *index_db, sqlite3_stmt *tune_select);
 bool queue_to_prev(void);
 
 #endif

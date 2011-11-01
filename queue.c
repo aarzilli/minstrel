@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <strings.h>
 
+#include <termcap.h>
+
 struct item queue[QUEUE_LENGTH];
 int queue_position;
 int queue_currently_playing_idx;
@@ -60,18 +62,58 @@ void advance_queue(sqlite3 *index_db) {
 	queue_append(random_index_item(index_db));
 }
 
-void display_queue(void) {
-	//TODO:
-	// - clear screen
-	// - display last 5 played items (when existing)
-	// - display currently playing item in bold with a prepended '>'
-	// - display up to 5 upcoming items (they must have occupied == true and played == false)
+static void clear_screen(void) {
+	puts(tgetstr("cl", NULL));
+}
+
+static void print_tune(sqlite3 *index_db, sqlite3_stmt *tune_select, struct item *item, bool current) {
+	if (sqlite3_reset(tune_select) != SQLITE_OK) goto print_tune_sqlite_failure;
+	if (sqlite3_bind_int64(tune_select, 1, item->id) != SQLITE_OK) goto print_tune_sqlite_failure;
+	if (sqlite3_step(tune_select) != SQLITE_ROW) goto print_tune_sqlite_failure;
+
+	printf(" %c %s\n", current ? '>' : ' ', sqlite3_column_text(tune_select, 12));
+	printf(" %c    by %s from %s [%s]\n", current ? '>' : ' ', sqlite3_column_text(tune_select, 1), sqlite3_column_text(tune_select, 0), sqlite3_column_text(tune_select, 13));
+
+	return;
+	
+print_tune_sqlite_failure:
+
+	fprintf(stderr, "Sqlite error while displaying queue: %s\n", sqlite3_errmsg(index_db));
+	exit(EXIT_FAILURE);
 }
 
 static bool queue_could_be_prev(int idx) {
 	if (!queue[idx].occupied) return false;
 	if (!queue[idx].played) return false;
 	return true;
+}
+
+#define DISPLAY_BEFORE_CURRENT 5
+#define DISPLAY_AFTER_CURRENT 5
+
+void display_queue(sqlite3 *index_db, sqlite3_stmt *tune_select) {
+	clear_screen();
+	
+	int start_off = 1;
+	
+	while (queue_could_be_prev((queue_currently_playing_idx - start_off) % QUEUE_LENGTH)
+		&& (start_off < DISPLAY_BEFORE_CURRENT))
+		++start_off;
+		
+	for (int i = start_off-1; i > 0; --i) {
+		print_tune(index_db, tune_select, queue + ((queue_currently_playing_idx - i) % QUEUE_LENGTH), false);
+	}
+
+	print_tune(index_db, tune_select, queue_currently_playing(), true);
+	
+	for (int i = 1; i < DISPLAY_AFTER_CURRENT; ++i) {
+		int idx = (queue_currently_playing_idx + i) % QUEUE_LENGTH;
+		if (!queue[idx].occupied) break;
+		if (queue[idx].played) break;
+		print_tune(index_db, tune_select, queue + idx, false);
+	}
+	
+	printf("\n");
 }
 
 bool queue_to_prev(void) {

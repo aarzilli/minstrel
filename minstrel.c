@@ -17,6 +17,7 @@
 GMainLoop *loop = NULL;
 GstElement *play = NULL;
 sqlite3 *player_index_db = NULL;
+sqlite3_stmt *tune_select = NULL;
 
 void tunes_play(struct item *item) {
 	sqlite3_stmt *get_filename = NULL;
@@ -30,8 +31,7 @@ void tunes_play(struct item *item) {
 	filename = sqlite3_column_text(get_filename, 0);
 	
 	gst_element_set_state(play, GST_STATE_READY);
-	display_queue();
-	printf("Playing id %ld filename: %s\n", item->id, filename);
+	display_queue(player_index_db, tune_select);
 	
 	g_object_set(G_OBJECT(play), "uri", filename, NULL);
 	gst_element_set_state(play, GST_STATE_PLAYING);
@@ -218,8 +218,14 @@ int main(int argc, char *argv[]) {
 	} else if (strcmp(argv[1], "start") == 0) {
 		//TODO: check if a unix domain socket exists, and if it does quit
 		
+		term_init();
 		queue_init();
 		player_index_db = open_or_create_index_db(false);
+		
+		if (sqlite3_prepare_v2(player_index_db, "select album, artist, album_artist, comment, composer, copyright, date, disc, encoder, genre, performer, publisher, title, track, filename from tunes where id = ?", -1, &tune_select, NULL) != SQLITE_OK) {
+			fprintf(stderr, "Failed to create index access query: %s\n", sqlite3_errmsg(player_index_db));
+			exit(EXIT_FAILURE);
+		}
 	
 		g_streamer_init();
 		
@@ -253,7 +259,6 @@ int main(int argc, char *argv[]) {
 }
 
 //TODO:
-// - remote control through dbus
 // - better display
 // - libnotify interface
 // - remote control through a unix domain socket
@@ -262,3 +267,4 @@ int main(int argc, char *argv[]) {
 // - search command
 // - query command
 // - restrict command
+// - auto-enter stop mode
