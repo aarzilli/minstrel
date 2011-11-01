@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <libavformat/avformat.h>
+#include <glib.h>
 
 #include "util.h"
 
@@ -60,11 +61,16 @@ static void index_file_ex(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stmt 
 	if (sqlite3_bind_text(insert, 13, title, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
 	if (sqlite3_bind_text(insert, 14, track, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
 	
-	char *fileuri;
-	asprintf(&fileuri, "file://%s", filename);
-	oomp(fileuri);
+	GError *error = NULL;
+	char *fileuri = g_filename_to_uri(filename, NULL, &error);
+	if (fileuri == NULL) {
+		fprintf(stderr, "Error converting filename [%s] into uri: %s\n", filename, error->message);
+		g_error_free(error);
+		exit(EXIT_FAILURE);
+	}
+	
 	if (sqlite3_bind_text(insert, 15, fileuri, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	free(fileuri);
+	g_free(fileuri);
 	
 	if (sqlite3_step(insert) != SQLITE_DONE) goto index_file_ex_failure;
 	
