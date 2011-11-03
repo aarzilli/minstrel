@@ -52,14 +52,18 @@ void do_notify(void) {
 #endif
 }
 
-void tunes_play(struct item *item) {
+bool tunes_play(struct item *item) {
 	sqlite3_stmt *get_filename = NULL;
 	const unsigned char *filename = NULL;
 	
 	if (sqlite3_prepare_v2(player_index_db,"select filename from tunes where id = ?", -1, &get_filename, NULL) != SQLITE_OK) goto tunes_play_sqlite3_failure;
 	
 	if (sqlite3_bind_int64(get_filename, 1, item->id) != SQLITE_OK) goto tunes_play_sqlite3_failure;
-	if (sqlite3_step(get_filename) != SQLITE_ROW) goto tunes_play_sqlite3_failure;
+	
+	if (sqlite3_step(get_filename) != SQLITE_ROW) {
+		sqlite3_finalize(get_filename);
+		return false;
+	}
 	
 	filename = sqlite3_column_text(get_filename, 0);
 	
@@ -73,7 +77,7 @@ void tunes_play(struct item *item) {
 	
 	sqlite3_finalize(get_filename);
 
-	return;
+	return true;
 	
 tunes_play_sqlite3_failure:
 	
@@ -103,8 +107,10 @@ static void stop_action(void) {
 
 static void next_action(void) {
 	printf("\n");
-	advance_queue(player_index_db);
-	tunes_play(queue_currently_playing());
+	for(;;) {
+		advance_queue(player_index_db);
+		if (tunes_play(queue_currently_playing())) break;
+	}
 }
 
 static void prev_action(void) {
@@ -268,12 +274,20 @@ static gboolean server_watch(GIOChannel *source, GIOCondition condition, void *i
 		break;
 	}
 	case CMD_PLAY_PAUSE:
+		play_pause_action();
 		break;
 	case CMD_STOP:
+		stop_action();
 		break;
 	case CMD_NEXT:
+		next_action();
+		break;
+	case CMD_PREV:
+		prev_action();
 		break;
 	case CMD_ADD:
+		queue_append(command[1]);
+		display_queue(player_index_db, tune_select);
 		break;
 	}
 	
@@ -344,6 +358,8 @@ int main(int argc, char *argv[]) {
 	} else if (strcmp(argv[1], "prev") == 0) {
 		int64_t cmd[] = { CMD_PREV, 0 };
 		conn_and_send(cmd);
+	} else if (strcmp(argv[1], "add") == 0) {
+		//TODO: implement add command
 	} else {
 		fprintf(stderr, "Unknown command %s\n", argv[1]);
 		exit(EXIT_FAILURE);

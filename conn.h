@@ -5,7 +5,6 @@
 
 int conn(void);
 int serve(void);
-
 void conn_and_send(int64_t cmd[2]);
 
 enum command_code {
