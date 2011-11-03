@@ -6,6 +6,9 @@
 #include <sqlite3.h>
 #include <gio/gio.h>
 #include <glib.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #include "util.h"
 #include "index.h"
@@ -23,6 +26,9 @@ GMainLoop *loop = NULL;
 GstElement *play = NULL;
 sqlite3 *player_index_db = NULL;
 sqlite3_stmt *tune_select = NULL;
+
+GIOChannel *serve_channel = NULL;
+guint serve_channel_source_id;
 
 #ifdef USE_LIBNOTIFY
 NotifyNotification *notification;
@@ -246,12 +252,42 @@ static void dbus_register(void) {
 	g_signal_connect(proxy, "g-signal", G_CALLBACK(dbus_signal_callback), NULL);
 }
 
+static gboolean server_watch(GIOChannel *source, GIOCondition condition, void *ignored) {
+	int64_t command[2] = { 0, 0 };
+	struct sockaddr_un src_addr;
+	socklen_t addrlen = sizeof(src_addr);
+	
+	size_t bytes_read = recvfrom(g_io_channel_unix_get_fd(source), (void *)command, sizeof(command), 0, &src_addr, &addrlen);
+	
+	printf("\nControl interface: %zd [ %ld %ld ]\n", bytes_read, command[0], command[1]);
+	
+	
+	switch (command[0]) {
+	case CMD_HANDSHAKE: {
+		// Nothing to do with this
+		break;
+	}
+	case CMD_PLAY_PAUSE:
+		break;
+	case CMD_STOP:
+		break;
+	case CMD_NEXT:
+		break;
+	case CMD_ADD:
+		break;
+	}
+	
+	return TRUE;
+}
+
 static void start_player(void) {
-	int fd = conn();
-	if (fd >= 0) {
-		fprintf(stderr, "There is already another instance of minstrel running\n");
-		close(fd);
-		exit(EXIT_FAILURE);
+	{
+		int fd = conn();
+		if (fd >= 0) {
+			fprintf(stderr, "There is already another instance of minstrel running\n");
+			close(fd);
+			exit(EXIT_FAILURE);
+		}
 	}
 	
 	term_init();
@@ -277,10 +313,13 @@ static void start_player(void) {
 	advance_queue(player_index_db);
 	tunes_play(queue_currently_playing());
 	
-	//TODO: create the server socket and add it to the event loop
+	int fd = serve();
+	serve_channel = g_io_channel_unix_new(fd);
+	serve_channel_source_id = g_io_add_watch(serve_channel, G_IO_IN|G_IO_ERR|G_IO_PRI|G_IO_HUP|G_IO_NVAL, (GIOFunc)server_watch, NULL);
 	
 	g_main_loop_run(loop);
 	g_streamer_end();
+	close(fd);
 }
 
 int main(int argc, char *argv[]) {
@@ -293,6 +332,18 @@ int main(int argc, char *argv[]) {
 		index_command(argv+2, argc-2);
 	} else if (strcmp(argv[1], "start") == 0) {
 		start_player();
+	} else if (strcmp(argv[1], "play") == 0) {
+		int64_t cmd[] = { CMD_PLAY_PAUSE, 0 };
+		conn_and_send(cmd);
+	} else if (strcmp(argv[1], "stop") == 0) {
+		int64_t cmd[] = { CMD_STOP, 0 };
+		conn_and_send(cmd);
+	} else if (strcmp(argv[1], "next") == 0) {
+		int64_t cmd[] = { CMD_NEXT, 0 };
+		conn_and_send(cmd);
+	} else if (strcmp(argv[1], "prev") == 0) {
+		int64_t cmd[] = { CMD_PREV, 0 };
+		conn_and_send(cmd);
 	} else {
 		fprintf(stderr, "Unknown command %s\n", argv[1]);
 		exit(EXIT_FAILURE);

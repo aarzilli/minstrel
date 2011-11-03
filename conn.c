@@ -12,7 +12,7 @@ static void setaddr(struct sockaddr_un *address) {
 
 	//printf("Size of path: %zd\n", sizeof(address.sun_path) / sizeof(char) - sizeof(char));
 	address->sun_family = AF_UNIX;
-	snprintf(address->sun_path, sizeof(address->sun_path) / sizeof(char) - sizeof(char), "/tmp/minstrel.%s", getlogin());
+	snprintf(address->sun_path, sizeof(address->sun_path) / sizeof(char) - sizeof(char), "/tmp/minstrel.%d", getuid());
 }
 
 int conn(void) {
@@ -30,7 +30,15 @@ int conn(void) {
 		return -1;
 	}
 	
-	//TODO: handshake
+	// Handshake
+	
+	int64_t hs[2] = { CMD_HANDSHAKE, 0 };
+	int r = send(fd, (void *)hs, sizeof(hs), 0);
+	if (r != sizeof(hs)) {
+		fprintf(stderr, "Couldn't send handshake %d\n", r);
+		close(fd);
+		return -1;
+	}
 	
 	return fd;
 }
@@ -38,6 +46,28 @@ int conn(void) {
 int serve(void) {
 	struct sockaddr_un address;
 	setaddr(&address);
-	//TODO: listen
-	return -1;
+	
+	unlink(address.sun_path);
+	
+	int fd = socket(PF_UNIX, SOCK_DGRAM, 0);
+	if (fd < 0) {
+		perror("Couldn't create a unix domain socket\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	if (bind(fd, (struct sockaddr *) &address, sizeof(address)) != 0) {
+		perror("Couldn't open control socket");
+		exit(EXIT_FAILURE);
+	}
+	
+	//NOTE: no need to listen, it's a datagram socket
+	
+	return fd;
+}
+
+void conn_and_send(int64_t cmd[2]) {
+	int fd = conn();
+	if (fd == -1) return;
+	send(fd, (void *)cmd, sizeof(int64_t)*2, 0);
+	close(fd);
 }
