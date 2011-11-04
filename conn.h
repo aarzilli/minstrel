@@ -6,6 +6,7 @@
 int conn(void);
 int serve(void);
 void conn_and_send(int64_t cmd[2]);
+void send_add(int fd, int64_t idx);
 
 enum command_code {
 	CMD_HANDSHAKE = 0,

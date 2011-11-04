@@ -60,8 +60,6 @@ int serve(void) {
 		exit(EXIT_FAILURE);
 	}
 	
-	//NOTE: no need to listen, it's a datagram socket
-	
 	return fd;
 }
 
@@ -70,4 +68,10 @@ void conn_and_send(int64_t cmd[2]) {
 	if (fd == -1) return;
 	send(fd, (void *)cmd, sizeof(int64_t)*2, 0);
 	close(fd);
+}
+
+void send_add(int fd, int64_t idx) {
+	int64_t cmd[] = { CMD_ADD, idx };
+	send(fd, (void *)cmd, sizeof(cmd), 0);
+	return;
 }

@@ -63,7 +63,7 @@ void advance_queue(sqlite3 *index_db) {
 }
 
 static void clear_screen(void) {
-	puts(tgetstr("cl", NULL));
+	fputs(tgetstr("cl", NULL), stdout);
 }
 
 void go_to_tune(sqlite3 *index_db, sqlite3_stmt *tune_select, struct item *item) {
@@ -122,6 +122,8 @@ void display_queue(sqlite3 *index_db, sqlite3_stmt *tune_select) {
 		if (queue[idx].played) break;
 		print_tune(index_db, tune_select, queue + idx, false, idx);
 	}
+	
+	sqlite3_reset(tune_select);
 	
 	printf("\n");
 }

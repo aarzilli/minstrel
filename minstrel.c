@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <termcap.h>
 
 #include "util.h"
 #include "index.h"
@@ -25,7 +26,6 @@
 GMainLoop *loop = NULL;
 GstElement *play = NULL;
 sqlite3 *player_index_db = NULL;
-sqlite3_stmt *tune_select = NULL;
 
 GIOChannel *serve_channel = NULL;
 guint serve_channel_source_id;
@@ -34,7 +34,7 @@ guint serve_channel_source_id;
 NotifyNotification *notification;
 #endif
 
-void do_notify(void) {
+void do_notify(sqlite3_stmt *tune_select) {
 #ifdef USE_LIBNOTIFY
 	go_to_tune(player_index_db, tune_select, queue_currently_playing());
 
@@ -56,6 +56,7 @@ bool tunes_play(struct item *item) {
 	sqlite3_stmt *get_filename = NULL;
 	const unsigned char *filename = NULL;
 	
+	
 	if (sqlite3_prepare_v2(player_index_db,"select filename from tunes where id = ?", -1, &get_filename, NULL) != SQLITE_OK) goto tunes_play_sqlite3_failure;
 	
 	if (sqlite3_bind_int64(get_filename, 1, item->id) != SQLITE_OK) goto tunes_play_sqlite3_failure;
@@ -68,14 +69,20 @@ bool tunes_play(struct item *item) {
 	filename = sqlite3_column_text(get_filename, 0);
 	
 	gst_element_set_state(play, GST_STATE_READY);
-	display_queue(player_index_db, tune_select);
-	
-	do_notify();
 	
 	g_object_set(G_OBJECT(play), "uri", filename, NULL);
 	gst_element_set_state(play, GST_STATE_PLAYING);
 	
 	sqlite3_finalize(get_filename);
+	
+	sqlite3_stmt *tune_select;
+	if (sqlite3_prepare_v2(player_index_db, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename from tunes where id = ?", -1, &tune_select, NULL) != SQLITE_OK) goto tunes_play_sqlite3_failure;
+
+	display_queue(player_index_db, tune_select);
+	
+	do_notify(tune_select);
+	
+	sqlite3_finalize(tune_select);
 
 	return true;
 	
@@ -165,7 +172,7 @@ static gboolean cb_print_position(void *none) {
 		int64_t pos_mins = pos_secs / 60;
 		pos_secs %= 60;
 		
-		printf("Position %ld:%02ld / %ld:%02ld\r", pos_mins, pos_secs, len_mins, len_secs);
+		printf("Position %ld:%02ld / %ld:%02ld      \r", pos_mins, pos_secs, len_mins, len_secs);
 		fflush(stdout);
 	}
 	
@@ -286,9 +293,19 @@ static gboolean server_watch(GIOChannel *source, GIOCondition condition, void *i
 		prev_action();
 		break;
 	case CMD_ADD:
+	{
 		queue_append(command[1]);
-		display_queue(player_index_db, tune_select);
+
+		sqlite3_stmt *tune_select;
+		if (sqlite3_prepare_v2(player_index_db, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename from tunes where id = ?", -1, &tune_select, NULL) != SQLITE_OK) {
+			fprintf(stderr, "Sqlite3 error adding to queue: %s\n", sqlite3_errmsg(player_index_db));
+		} else {
+			display_queue(player_index_db, tune_select);
+			sqlite3_finalize(tune_select);
+		}
+		
 		break;
+	}
 	}
 	
 	return TRUE;
@@ -314,11 +331,6 @@ static void start_player(void) {
 	}
 	notification = notify_notification_new("blap", "", NULL, NULL);
 #endif
-	
-	if (sqlite3_prepare_v2(player_index_db, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename from tunes where id = ?", -1, &tune_select, NULL) != SQLITE_OK) {
-		fprintf(stderr, "Failed to create index access query: %s\n", sqlite3_errmsg(player_index_db));
-		exit(EXIT_FAILURE);
-	}
 
 	g_streamer_init();
 	g_streamer_begin();
@@ -333,6 +345,137 @@ static void start_player(void) {
 	
 	g_main_loop_run(loop);
 	g_streamer_end();
+	
+	close(fd);
+	sqlite3_close(player_index_db);
+}
+
+static void search_command(char *terms[], int n) {
+	int size = 1;
+	
+	for (int i = 0; i < n; ++i) {
+		size += 1 + strlen(terms[i]);
+	}
+	
+	char *query = malloc(sizeof(char) * size);
+	oomp(query);
+	query[0] = '\0';
+	
+	for (int i = 0; i < n; ++i) {
+		strcat(query, terms[i]);
+		strcat(query, " ");
+	}
+	
+	term_init();
+	player_index_db = open_or_create_index_db(false);
+	
+	sqlite3_stmt *search_select;
+	if (sqlite3_prepare_v2(player_index_db, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename, tunes.id from tunes, ridx where tunes.id = ridx.id and any match ? order by artist, album, cast(track as integer) asc", -1, &search_select, NULL) != SQLITE_OK) goto search_sqlite3_failure;
+	
+	if (sqlite3_bind_text(search_select, 1, query, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto search_sqlite3_failure;
+	
+#define REFLEN 20
+	
+	char album[REFLEN], artist[REFLEN];
+	char null_str[] = "(null)";
+	
+	album[0] = '\0';
+	artist[0] = '\0';
+	
+	while (sqlite3_step(search_select) == SQLITE_ROW) {
+		//TODO: use a checksum instead of using a copy of the first characters
+		
+		const char *cur_album = (const char *)sqlite3_column_text(search_select, 0);
+		const char *cur_artist = (const char *)sqlite3_column_text(search_select, 1);
+		
+		if (!cur_album) cur_album = null_str;
+		if (!cur_artist) cur_artist = null_str;
+		
+		if ((strncmp(cur_album, album, REFLEN-1) != 0) || (strncmp(cur_artist, artist, REFLEN-1) != 0)) {
+			strncpy(album, cur_album, REFLEN-1);
+			strncpy(artist, cur_artist, REFLEN-1);
+			
+			album[REFLEN-1] = '\0';
+			artist[REFLEN-1] = '\0';
+			
+			fputs("\nFrom ", stdout);
+			fputs(tgetstr("md", NULL), stdout);
+			fputs(cur_album, stdout);
+			fputs(tgetstr("me", NULL), stdout);
+			fputs(" by ", stdout);
+			fputs(tgetstr("md", NULL), stdout);
+			fputs(cur_artist, stdout);
+			fputs(tgetstr("me", NULL), stdout);
+			fputs("\n", stdout);
+		}
+		
+		printf("%ld\t%2d. ", (int64_t)sqlite3_column_int64(search_select, 15), sqlite3_column_int(search_select, 13));
+		fputs(tgetstr("md", NULL), stdout);
+		fputs((const char *)sqlite3_column_text(search_select, 12), stdout);
+		fputs(tgetstr("me", NULL), stdout);
+		fputs("\n", stdout);
+	}
+	
+	sqlite3_finalize(search_select);
+	
+	char *errmsg = NULL;
+	sqlite3_exec(player_index_db, "DELETE FROM search_save;", NULL, NULL, &errmsg);
+	if (errmsg != NULL) goto search_sqlite3_failure;
+	
+	sqlite3_stmt *search_save;
+	if (sqlite3_prepare_v2(player_index_db, "INSERT INTO search_save(id) SELECT tunes.id FROM tunes, ridx WHERE tunes.id = ridx.id AND any MATCH ? ORDER BY artist, album, cast(track as integer) ASC;", -1, &search_save, NULL) != SQLITE_OK) goto search_sqlite3_failure;
+	
+	if (sqlite3_bind_text(search_save, 1, query, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto search_sqlite3_failure;
+	
+	if (sqlite3_step(search_save) != SQLITE_DONE) goto search_sqlite3_failure;
+	
+	sqlite3_finalize(search_save);
+	
+	sqlite3_close(player_index_db);
+	free(query);
+	
+	return;
+	
+search_sqlite3_failure:
+	
+	fprintf(stderr, "Sqlite3 error while searching: %s\n", sqlite3_errmsg(player_index_db));
+	sqlite3_close(player_index_db);
+	exit(EXIT_FAILURE);
+}
+
+static void add_command(int argc, char *argv[]) {
+	int fd = conn();
+	if (fd == -1) {
+		fprintf(stderr, "Couldn't connect to server\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	if (argc > 0) {
+		for (int i = 0; i < argc; ++i) {
+			send_add(fd, (int64_t)atoll(argv[i]));
+		}
+	} else {
+#define LINEBUF 40
+		char buf[LINEBUF];
+		int i = 0;
+		int r;
+		
+		while ((r = getchar()) != EOF) {
+			if (i < LINEBUF-1)
+				buf[i++] = r;
+			if (r == '\n') {
+				buf[i] = '\0';
+				if (isdigit(buf[0])) {
+					char *tab = strchr(buf, '\t');
+					if (tab != NULL) {
+						*tab = '\0';
+						send_add(fd, (int64_t)atoll(buf));
+					}
+				}
+				i = 0;
+			}
+		}
+	}
 	close(fd);
 }
 
@@ -359,7 +502,11 @@ int main(int argc, char *argv[]) {
 		int64_t cmd[] = { CMD_PREV, 0 };
 		conn_and_send(cmd);
 	} else if (strcmp(argv[1], "add") == 0) {
-		//TODO: implement add command
+		add_command(argc-2, argv+2);
+	} else if (strcmp(argv[1], "search") == 0) {
+		search_command(argv+2, argc-2);
+	} else if (strcmp(argv[1], "addlast") == 0) {
+		//TODO: implement addlast command
 	} else {
 		fprintf(stderr, "Unknown command %s\n", argv[1]);
 		exit(EXIT_FAILURE);
@@ -369,10 +516,7 @@ int main(int argc, char *argv[]) {
 }
 
 //TODO:
-// - remote control through a unix domain socket
-// - search command
-// - add to queue command
-// - clear queue command
+// - addlast
 // - query command
 // - restrict command
 // - auto-enter stop mode
