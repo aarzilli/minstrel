@@ -182,6 +182,15 @@ static gboolean cb_print_position(void *none) {
 static void usage(void) {
 	fprintf(stderr, "minstrel [command] [arguments]\n");
 	fprintf(stderr, "commands:\n");
+	fprintf(stderr, "\tstart\n");
+	fprintf(stderr, "\tplay\n");
+	fprintf(stderr, "\tnext\n");
+	fprintf(stderr, "\tprev\n");
+	fprintf(stderr, "\tadd\n");
+	fprintf(stderr, "\tsearch\n");
+	fprintf(stderr, "\twhere\n");
+	fprintf(stderr, "\taddlast\n");
+	fprintf(stderr, "\thelp\n");
 	//TODO: write
 }
 
@@ -350,30 +359,7 @@ static void start_player(void) {
 	sqlite3_close(player_index_db);
 }
 
-static void search_command(char *terms[], int n) {
-	int size = 1;
-	
-	for (int i = 0; i < n; ++i) {
-		size += 1 + strlen(terms[i]);
-	}
-	
-	char *query = malloc(sizeof(char) * size);
-	oomp(query);
-	query[0] = '\0';
-	
-	for (int i = 0; i < n; ++i) {
-		strcat(query, terms[i]);
-		strcat(query, " ");
-	}
-	
-	term_init();
-	player_index_db = open_or_create_index_db(false);
-	
-	sqlite3_stmt *search_select;
-	if (sqlite3_prepare_v2(player_index_db, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename, tunes.id from tunes, ridx where tunes.id = ridx.id and any match ? order by artist, album, cast(track as integer) asc", -1, &search_select, NULL) != SQLITE_OK) goto search_sqlite3_failure;
-	
-	if (sqlite3_bind_text(search_select, 1, query, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto search_sqlite3_failure;
-	
+static void show_search_results(sqlite3_stmt *search_select) {
 #define REFLEN 20
 	
 	char album[REFLEN], artist[REFLEN];
@@ -415,7 +401,34 @@ static void search_command(char *terms[], int n) {
 		fputs(tgetstr("me", NULL), stdout);
 		fputs("\n", stdout);
 	}
+}
+
+static void search_command(char *terms[], int n) {
+	int size = 1;
 	
+	for (int i = 0; i < n; ++i) {
+		size += 1 + strlen(terms[i]);
+	}
+	
+	char *query = malloc(sizeof(char) * size);
+	oomp(query);
+	query[0] = '\0';
+	
+	for (int i = 0; i < n; ++i) {
+		strcat(query, terms[i]);
+		strcat(query, " ");
+	}
+	
+	term_init();
+	player_index_db = open_or_create_index_db(false);
+	
+	sqlite3_stmt *search_select;
+	if (sqlite3_prepare_v2(player_index_db, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename, tunes.id from tunes, ridx where tunes.id = ridx.id and any match ? order by artist, album, cast(track as integer) asc", -1, &search_select, NULL) != SQLITE_OK) goto search_sqlite3_failure;
+	
+	if (sqlite3_bind_text(search_select, 1, query, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto search_sqlite3_failure;
+	
+	show_search_results(search_select);
+		
 	sqlite3_finalize(search_select);
 	
 	char *errmsg = NULL;
@@ -441,6 +454,34 @@ search_sqlite3_failure:
 	fprintf(stderr, "Sqlite3 error while searching: %s\n", sqlite3_errmsg(player_index_db));
 	sqlite3_close(player_index_db);
 	exit(EXIT_FAILURE);
+}
+
+static void where_command(const char *clause) {
+	term_init();
+	player_index_db = open_or_create_index_db(false);
+	
+	char *query;
+	
+	asprintf(&query, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename, tunes.id from tunes, ridx where tunes.id = ridx.id and (%s) order by artist, album, cast(track as integer) asc", clause);
+	oomp(query);
+	
+	sqlite3_stmt *search_select;
+	if (sqlite3_prepare_v2(player_index_db, query, -1, &search_select, NULL) != SQLITE_OK) goto where_sqlite3_failure;
+	
+	show_search_results(search_select);
+
+	sqlite3_finalize(search_select);
+	free(query);
+	sqlite3_close(player_index_db);
+
+	return;
+		
+where_sqlite3_failure:
+
+	fprintf(stderr, "Sqlite3 error: %s\n", sqlite3_errmsg(player_index_db));
+	sqlite3_close(player_index_db);
+	free(query);
+	return;
 }
 
 static void add_command(int argc, char *argv[]) {
@@ -534,18 +575,21 @@ int main(int argc, char *argv[]) {
 		add_command(argc-2, argv+2);
 	} else if (strcmp(argv[1], "search") == 0) {
 		search_command(argv+2, argc-2);
+	} else if (strcmp(argv[1], "where") == 0) {
+		if (argc != 3) {
+			fprintf(stderr, "Wrong number of arguments to 'where'\n");
+			exit(EXIT_FAILURE);
+		}
+		where_command(argv[2]);
 	} else if (strcmp(argv[1], "addlast") == 0) {
 		addlast_command();
+	} else if (strcmp(argv[1], "help") == 0) {
+		usage();
 	} else {
 		fprintf(stderr, "Unknown command %s\n", argv[1]);
+		usage();
 		exit(EXIT_FAILURE);
 	}
 	
 	return 0;
 }
-
-//TODO:
-// - addlast
-// - query command
-// - restrict command
-// - auto-enter stop mode
