@@ -479,6 +479,35 @@ static void add_command(int argc, char *argv[]) {
 	close(fd);
 }
 
+static void addlast_command(void) {
+	int fd = conn();
+	if (fd == -1) {
+		fprintf(stderr, "Couldn't connect to server\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	player_index_db = open_or_create_index_db(false);
+
+	sqlite3_stmt *select;
+	if (sqlite3_prepare_v2(player_index_db, "SELECT id FROM search_save ORDER BY counter;", -1, &select, NULL) != SQLITE_OK) goto addlast_command_sqlite3_failure;
+	
+	while (sqlite3_step(select) == SQLITE_ROW) {
+		send_add(fd, (int64_t)sqlite3_column_int64(select, 0));
+	}
+	
+	sqlite3_finalize(select);
+	sqlite3_close(player_index_db);
+	close(fd);
+	
+	return;
+	
+addlast_command_sqlite3_failure:
+	
+	fprintf(stderr, "Sqlite error: %s\n", sqlite3_errmsg(player_index_db));
+	sqlite3_close(player_index_db);
+	close(fd);
+}
+
 int main(int argc, char *argv[]) {
 	if (argc < 2) {
 		usage();
@@ -506,7 +535,7 @@ int main(int argc, char *argv[]) {
 	} else if (strcmp(argv[1], "search") == 0) {
 		search_command(argv+2, argc-2);
 	} else if (strcmp(argv[1], "addlast") == 0) {
-		//TODO: implement addlast command
+		addlast_command();
 	} else {
 		fprintf(stderr, "Unknown command %s\n", argv[1]);
 		exit(EXIT_FAILURE);
