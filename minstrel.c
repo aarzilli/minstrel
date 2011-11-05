@@ -360,13 +360,8 @@ static void start_player(void) {
 }
 
 static void show_search_results(sqlite3_stmt *search_select) {
-#define REFLEN 20
-	
-	char album[REFLEN], artist[REFLEN];
+	int64_t cs = 0;
 	char null_str[] = "(null)";
-	
-	album[0] = '\0';
-	artist[0] = '\0';
 	
 	while (sqlite3_step(search_select) == SQLITE_ROW) {
 		//TODO: use a checksum instead of using a copy of the first characters
@@ -377,13 +372,9 @@ static void show_search_results(sqlite3_stmt *search_select) {
 		if (!cur_album) cur_album = null_str;
 		if (!cur_artist) cur_artist = null_str;
 		
-		if ((strncmp(cur_album, album, REFLEN-1) != 0) || (strncmp(cur_artist, artist, REFLEN-1) != 0)) {
-			strncpy(album, cur_album, REFLEN-1);
-			strncpy(artist, cur_artist, REFLEN-1);
-			
-			album[REFLEN-1] = '\0';
-			artist[REFLEN-1] = '\0';
-			
+		int64_t cur_cs = checksum(cur_album) + checksum(cur_artist);
+		
+		if (cur_cs != cs) {
 			fputs("\nFrom ", stdout);
 			fputs(tgetstr("md", NULL), stdout);
 			fputs(cur_album, stdout);
@@ -393,6 +384,8 @@ static void show_search_results(sqlite3_stmt *search_select) {
 			fputs(cur_artist, stdout);
 			fputs(tgetstr("me", NULL), stdout);
 			fputs("\n", stdout);
+			
+			cs = cur_cs;
 		}
 		
 		printf("%ld\t%2d. ", (int64_t)sqlite3_column_int64(search_select, 15), sqlite3_column_int(search_select, 13));

@@ -11,5 +11,6 @@ bool strstart(const char *haystack, const char *needle);
 const char *tag_get(AVFormatContext *fmt_ctx, const char *key);
 sqlite3 *open_or_create_index_db(bool truncate_tunes);
 void term_init(void);
+int64_t checksum(const char *a);
 
 #endif

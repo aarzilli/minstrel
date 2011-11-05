@@ -110,3 +110,14 @@ void term_init(void) {
 	if (termenv == NULL) return;
 	if (tgetent(NULL, termenv) < 0) return;
 }
+
+int64_t checksum(const char *a) {
+	int64_t r = 0;
+	
+	// TODO weak, use some crc
+	for (char *c = a; *c != '\0'; ++c) {
+		r += *c;
+	}
+	
+	return r;
+}
