@@ -182,16 +182,15 @@ static gboolean cb_print_position(void *none) {
 static void usage(void) {
 	fprintf(stderr, "minstrel [command] [arguments]\n");
 	fprintf(stderr, "commands:\n");
-	fprintf(stderr, "\tstart\n");
-	fprintf(stderr, "\tplay\n");
-	fprintf(stderr, "\tnext\n");
-	fprintf(stderr, "\tprev\n");
-	fprintf(stderr, "\tadd\n");
-	fprintf(stderr, "\tsearch\n");
-	fprintf(stderr, "\twhere\n");
-	fprintf(stderr, "\taddlast\n");
-	fprintf(stderr, "\thelp\n");
-	//TODO: write
+	fprintf(stderr, "  start\t\tStart server instance\n");
+	fprintf(stderr, "  play\t\tRequests server to toggle between play and pause\n");
+	fprintf(stderr, "  next\t\tRequests server next track\n");
+	fprintf(stderr, "  prev\t\tRequests server previous track\n");
+	fprintf(stderr, "  add <id1...>\tAdds songs to queue -- list song IDs on command line or on standard input (one per line)\n");
+	fprintf(stderr, "  search <query> Search for songs by full text matching of a query, output can be piped into add\n");
+	fprintf(stderr, "  where <expr>\tSearch for songs with a boolean query\n");
+	fprintf(stderr, "  addlast\tAdds results of last search to queue\n");
+	fprintf(stderr, "  help\t\tThis message\n");
 }
 
 static void g_streamer_init(void) {
