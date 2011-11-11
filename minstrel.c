@@ -88,7 +88,7 @@ bool tunes_play(struct item *item) {
 	
 tunes_play_sqlite3_failure:
 	
-	fprintf(stderr, "Sqlite3 error starting to play %ld [%s]: %s\n", item->id, filename, sqlite3_errmsg(player_index_db));
+	fprintf(stderr, "Sqlite3 error starting to play %" PRId64 " [%s]: %s\n", item->id, filename, sqlite3_errmsg(player_index_db));
 	if (get_filename != NULL) sqlite3_finalize(get_filename);
 	exit(EXIT_FAILURE);
 }
@@ -172,7 +172,7 @@ static gboolean cb_print_position(void *none) {
 		int64_t pos_mins = pos_secs / 60;
 		pos_secs %= 60;
 		
-		printf("Position %ld:%02ld / %ld:%02ld      \r", pos_mins, pos_secs, len_mins, len_secs);
+		printf("Position %" PRId64 ":%02" PRId64 " / %" PRId64 ":%02" PRId64 "      \r", pos_mins, pos_secs, len_mins, len_secs);
 		fflush(stdout);
 	}
 	
@@ -280,7 +280,7 @@ static gboolean server_watch(GIOChannel *source, GIOCondition condition, void *i
 	
 	size_t bytes_read = recvfrom(g_io_channel_unix_get_fd(source), (void *)command, sizeof(command), 0, &src_addr, &addrlen);
 	
-	printf("\nControl interface: %zd [ %ld %ld ]\n", bytes_read, command[0], command[1]);
+	printf("\nControl interface: %zd [ %" PRId64 " %" PRId64 " ]\n", bytes_read, command[0], command[1]);
 	
 	
 	switch (command[0]) {
@@ -387,7 +387,7 @@ static void show_search_results(sqlite3_stmt *search_select) {
 			cs = cur_cs;
 		}
 		
-		printf("%ld\t%2d. ", (int64_t)sqlite3_column_int64(search_select, 15), sqlite3_column_int(search_select, 13));
+		printf("%" PRId64 "\t%2d. ", (int64_t)sqlite3_column_int64(search_select, 15), sqlite3_column_int(search_select, 13));
 		fputs(tgetstr("md", NULL), stdout);
 		fputs((const char *)sqlite3_column_text(search_select, 12), stdout);
 		fputs(tgetstr("me", NULL), stdout);
