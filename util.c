@@ -14,18 +14,18 @@ void oomp(void *ptr) {
 bool sqlite3_has_table(sqlite3 *db, const char *name) {
 	sqlite3_stmt *statement = NULL;
 	int r;
-	
+
 	r = sqlite3_prepare_v2(db, "select name from sqlite_master where name = ?", -1, &statement, NULL);
 	if (r != SQLITE_OK) goto sqlite3_has_table_failure;
-	
+
 	r = sqlite3_bind_text(statement, 1, name, -1, SQLITE_TRANSIENT);
 	if (r != SQLITE_OK) goto sqlite3_has_table_failure;
-	
+
 	r = sqlite3_step(statement);
 	bool ret = (r == SQLITE_ROW);
 	sqlite3_finalize(statement);
 	return ret;
-	
+
 sqlite3_has_table_failure:
 
 	fprintf(stderr, "Sqlite3 error on has_table: %s\n", sqlite3_errmsg(db));
@@ -48,36 +48,36 @@ sqlite3 *open_or_create_index_db(bool truncate_tunes) {
 	char *errmsg;
 	int r;
 	sqlite3 *index_db;
-	
+
 	{
 		char *index_file_name;
 		asprintf(&index_file_name, "%s/.minstrel", getenv("HOME"));
 		oomp(index_file_name);
-		
+
 		r = sqlite3_open_v2(index_file_name, &index_db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, NULL);
 
 		oomp(index_db);
-		
+
 		if (r != SQLITE_OK) {
 			fprintf(stderr, "Failed to open/create index file: %s\n", sqlite3_errmsg(index_db));
 			exit(EXIT_FAILURE);
 		}
-		
+
 		free(index_file_name);
 	}
-	
+
 	sqlite3_exec(index_db, "pragma foreign_keys = on;", NULL, NULL, &errmsg);
 	if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
-	
+
 	sqlite3_exec(index_db, "pragma synchronous = off;", NULL, NULL, &errmsg);
 	if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
-	
+
 	sqlite3_exec(index_db, "CREATE TABLE IF NOT EXISTS config(key text, value text);", NULL, NULL, &errmsg);
 	if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
-	
+
 	sqlite3_exec(index_db, "CREATE TABLE IF NOT EXISTS tunes(id integer primary key autoincrement, album text, artist text, album_artist text, comment text, composer text, copyright text, date text, disc text, encoder text, genre text, performer text, publisher text, title text, track text, filename text);", NULL, NULL, &errmsg);
 	if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
-	
+
 	sqlite3_exec(index_db, "CREATE TABLE IF NOT EXISTS search_save(counter integer primary key autoincrement, id integer);", NULL, NULL, &errmsg);
 	if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
 
@@ -89,13 +89,13 @@ sqlite3 *open_or_create_index_db(bool truncate_tunes) {
 	if (truncate_tunes) {
 		sqlite3_exec(index_db, "DELETE FROM tunes;", NULL, NULL, &errmsg);
 		if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
-		
+
 		sqlite3_exec(index_db, "DELETE FROM ridx;", NULL, NULL, &errmsg);
 		if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
 	}
 
 	return index_db;
-	
+
 open_or_create_index_db_sqlite3_failure:
 
 	fprintf(stderr, "Sqlite error building index: %s\n", errmsg);
@@ -106,18 +106,18 @@ open_or_create_index_db_sqlite3_failure:
 
 void term_init(void) {
 	char *termenv = getenv("TERM");
-	
+
 	if (termenv == NULL) return;
 	if (tgetent(NULL, termenv) < 0) return;
 }
 
 int64_t checksum(const char *a) {
 	int64_t r = 0;
-	
+
 	// TODO weak, use some crc
-	for (char *c = a; *c != '\0'; ++c) {
+	for (const char *c = a; *c != '\0'; ++c) {
 		r += *c;
 	}
-	
+
 	return r;
 }

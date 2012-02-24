@@ -55,39 +55,39 @@ void do_notify(sqlite3_stmt *tune_select) {
 bool tunes_play(struct item *item) {
 	sqlite3_stmt *get_filename = NULL;
 	const unsigned char *filename = NULL;
-	
-	
+
+
 	if (sqlite3_prepare_v2(player_index_db,"select filename from tunes where id = ?", -1, &get_filename, NULL) != SQLITE_OK) goto tunes_play_sqlite3_failure;
-	
+
 	if (sqlite3_bind_int64(get_filename, 1, item->id) != SQLITE_OK) goto tunes_play_sqlite3_failure;
-	
+
 	if (sqlite3_step(get_filename) != SQLITE_ROW) {
 		sqlite3_finalize(get_filename);
 		return false;
 	}
-	
+
 	filename = sqlite3_column_text(get_filename, 0);
-	
+
 	gst_element_set_state(play, GST_STATE_READY);
-	
+
 	g_object_set(G_OBJECT(play), "uri", filename, NULL);
 	gst_element_set_state(play, GST_STATE_PLAYING);
-	
+
 	sqlite3_finalize(get_filename);
-	
+
 	sqlite3_stmt *tune_select;
 	if (sqlite3_prepare_v2(player_index_db, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename from tunes where id = ?", -1, &tune_select, NULL) != SQLITE_OK) goto tunes_play_sqlite3_failure;
 
 	display_queue(player_index_db, tune_select);
-	
+
 	do_notify(tune_select);
-	
+
 	sqlite3_finalize(tune_select);
 
 	return true;
-	
+
 tunes_play_sqlite3_failure:
-	
+
 	fprintf(stderr, "Sqlite3 error starting to play %" PRId64 " [%s]: %s\n", item->id, filename, sqlite3_errmsg(player_index_db));
 	if (get_filename != NULL) sqlite3_finalize(get_filename);
 	exit(EXIT_FAILURE);
@@ -96,7 +96,7 @@ tunes_play_sqlite3_failure:
 static void play_pause_action(void) {
 	GstState state, pending;
 	gst_element_get_state(play, &state, &pending, GST_SECOND);
-	
+
 	if (state == GST_STATE_PLAYING) {
 		gst_element_set_state(play, GST_STATE_PAUSED);
 	} else if (state == GST_STATE_PAUSED) {
@@ -131,51 +131,51 @@ static gboolean bus_callback(GstBus *bus, GstMessage *message, gpointer data) {
 		case GST_MESSAGE_ERROR: {
 			GError *err = NULL;
 			gchar *debug;
-			
+
 			gst_message_parse_error(message, &err, &debug);
 			printf("Error: %s\n", err->message);
 			g_error_free(err);
 			g_free(debug);
-			
+
 			g_main_loop_quit(loop);
 			break;
 		}
-		
+
 		case GST_MESSAGE_EOS:
 			next_action();
 			break;
-			
+
 		default:
 			// unhandled message
 			break;
 	}
-	
+
 	return TRUE;
 }
 
 static gboolean cb_print_position(void *none) {
 	if (play == NULL) return TRUE;
-	
+
 	GstState state, pending;
 	gst_element_get_state(play, &state, &pending, GST_SECOND);
 	if (state != GST_STATE_PLAYING) return TRUE;
-	
+
 	GstFormat fmt = GST_FORMAT_TIME;
 	gint64 pos, len;
 	if (gst_element_query_position(play, &fmt, &pos) && gst_element_query_duration(play, &fmt, &len)) {
 		int64_t len_secs = len / 1000000000;
 		int64_t pos_secs = pos / 1000000000;
-		
+
 		int64_t len_mins = len_secs / 60;
 		len_secs %= 60;
-		
+
 		int64_t pos_mins = pos_secs / 60;
 		pos_secs %= 60;
-		
-		printf("Position %" PRId64 ":%02" PRId64 " / %" PRId64 ":%02" PRId64 "      \r", pos_mins, pos_secs, len_mins, len_secs);
+
+		printf("\rPosition %" PRId64 ":%02" PRId64 " / %" PRId64 ":%02" PRId64 "      ", pos_mins, pos_secs, len_mins, len_secs);
 		fflush(stdout);
 	}
-	
+
 	return TRUE;
 }
 
@@ -195,18 +195,18 @@ static void usage(void) {
 
 static void g_streamer_init(void) {
 	int argc = 0;
-	
+
 	gst_init(&argc, NULL);
 	loop = g_main_loop_new(NULL, FALSE);
 }
 
 static void g_streamer_begin(void) {
 	play = gst_element_factory_make("playbin2", "play");
-	
+
 	GstBus *bus = gst_pipeline_get_bus(GST_PIPELINE(play));
 	gst_bus_add_watch(bus, bus_callback, loop);
 	gst_object_unref(bus);
-	
+
 	g_timeout_add(1000, (GSourceFunc)cb_print_position, NULL);
 }
 
@@ -222,17 +222,17 @@ static void dbus_signal_callback(GDBusProxy *proxy, gchar *sender_name, gchar *s
 
 	GVariant *app_variant = g_variant_get_child_value(parameters, 0);
 	GVariant *key_variant = g_variant_get_child_value(parameters, 1);
-	
+
 	const gchar *app = g_variant_get_string(app_variant, NULL);
 	const gchar *key = g_variant_get_string(key_variant, NULL);
-	
+
 	g_variant_unref(app_variant);
 	g_variant_unref(key_variant);
-	
+
 	if (strcmp(app, APPNAME) != 0) return;
-	
+
 	//printf("\nPressed key: %s\n", key);
-	
+
 	if (strcmp(key, "Play") == 0) {
 		play_pause_action();
 	} else if (strcmp(key, "Stop") == 0) {
@@ -246,21 +246,21 @@ static void dbus_signal_callback(GDBusProxy *proxy, gchar *sender_name, gchar *s
 
 static void dbus_register(void) {
 	GError *error = NULL;
-	
+
 	GDBusConnection *connection = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
 	if (connection == NULL) {
 		fprintf(stderr, "Failed to open dbus: %s\n", error->message);
 		g_error_free(error);
 		return;
 	}
-	
+
 	GDBusProxy *proxy = g_dbus_proxy_new_sync(connection, G_DBUS_PROXY_FLAGS_NONE, NULL, "org.gnome.SettingsDaemon", "/org/gnome/SettingsDaemon/MediaKeys", "org.gnome.SettingsDaemon.MediaKeys", NULL, &error);
 	if (connection == NULL) {
 		fprintf(stderr, "Failed to create media keys proxy: %s\n", error->message);
 		g_error_free(error);
 		return;
 	}
-	
+
 	GVariant *result = g_dbus_proxy_call_sync(proxy, "GrabMediaPlayerKeys", g_variant_new("(su)", APPNAME, 0), G_DBUS_CALL_FLAGS_NONE, -1, NULL, &error);
 	if (result == NULL) {
 		fprintf(stderr, "Failed to grab media player keys: %s\n", error->message);
@@ -269,7 +269,7 @@ static void dbus_register(void) {
 	} else {
 		g_variant_unref(result); // not interested in this result (does it even contain anything?)
 	}
-	
+
 	g_signal_connect(proxy, "g-signal", G_CALLBACK(dbus_signal_callback), NULL);
 }
 
@@ -277,12 +277,12 @@ static gboolean server_watch(GIOChannel *source, GIOCondition condition, void *i
 	int64_t command[2] = { 0, 0 };
 	struct sockaddr_un src_addr;
 	socklen_t addrlen = sizeof(src_addr);
-	
+
 	size_t bytes_read = recvfrom(g_io_channel_unix_get_fd(source), (void *)command, sizeof(command), 0, &src_addr, &addrlen);
-	
+
 	printf("\nControl interface: %zd [ %" PRId64 " %" PRId64 " ]\n", bytes_read, command[0], command[1]);
-	
-	
+
+
 	switch (command[0]) {
 	case CMD_HANDSHAKE: {
 		// Nothing to do with this
@@ -311,11 +311,11 @@ static gboolean server_watch(GIOChannel *source, GIOCondition condition, void *i
 			display_queue(player_index_db, tune_select);
 			sqlite3_finalize(tune_select);
 		}
-		
+
 		break;
 	}
 	}
-	
+
 	return TRUE;
 }
 
