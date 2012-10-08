@@ -280,8 +280,7 @@ static gboolean server_watch(GIOChannel *source, GIOCondition condition, void *i
 
 	size_t bytes_read = recvfrom(g_io_channel_unix_get_fd(source), (void *)command, sizeof(command), 0, &src_addr, &addrlen);
 
-	printf("\nControl interface: %zd [ %" PRId64 " %" PRId64 " ]\n", bytes_read, command[0], command[1]);
-
+	//printf("\nControl interface: %zd [ %" PRId64 " %" PRId64 " ]\n", bytes_read, command[0], command[1]);
 
 	switch (command[0]) {
 	case CMD_HANDSHAKE: {
@@ -457,7 +456,7 @@ static void where_command(const char *clause) {
 	if (clause != NULL) {
 		asprintf(&query, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename, tunes.id from tunes, ridx where tunes.id = ridx.id and (%s) order by artist, album, cast(track as integer) asc", clause);
 	} else {
-		asprintf(&query, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename, tunes.id from tunes, ridx where tunes.id = ridx.id order by artist, album, cast(track as integer) asc");	
+		asprintf(&query, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename, tunes.id from tunes, ridx where tunes.id = ridx.id order by artist, album, cast(track as integer) asc");
 	}
 	oomp(query);
 
