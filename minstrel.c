@@ -362,8 +362,6 @@ static void show_search_results(sqlite3_stmt *search_select) {
 	char null_str[] = "(null)";
 
 	while (sqlite3_step(search_select) == SQLITE_ROW) {
-		//TODO: use a checksum instead of using a copy of the first characters
-
 		const char *cur_album = (const char *)sqlite3_column_text(search_select, 0);
 		const char *cur_artist = (const char *)sqlite3_column_text(search_select, 1);
 

@@ -51,7 +51,11 @@ sqlite3 *open_or_create_index_db(bool truncate_tunes) {
 
 	{
 		char *index_file_name;
-		asprintf(&index_file_name, "%s/.minstrel", getenv("HOME"));
+		if (getenv("XDG_CONFIG_HOME") != NULL) {
+			asprintf(&index_file_name, "%s/minstrel/db", getenv("XDG_CONFIG_HOME"));
+		} else {
+			asprintf(&index_file_name, "%s/.config/minstrel/db", getenv("HOME"));
+		}
 		oomp(index_file_name);
 
 		r = sqlite3_open_v2(index_file_name, &index_db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, NULL);
