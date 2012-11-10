@@ -126,6 +126,11 @@ static void prev_action(void) {
 	}
 }
 
+static void rewind_action(void) {
+	printf("\n");
+	tunes_play(queue_currently_playing());
+}
+
 static gboolean bus_callback(GstBus *bus, GstMessage *message, gpointer data) {
 	switch(GST_MESSAGE_TYPE(message)) {
 		case GST_MESSAGE_ERROR: {
@@ -186,6 +191,7 @@ static void usage(void) {
 	fprintf(stderr, "  play\t\tRequests server to toggle between play and pause\n");
 	fprintf(stderr, "  next\t\tRequests server next track\n");
 	fprintf(stderr, "  prev\t\tRequests server previous track\n");
+	fprintf(stderr, "  rewind\t\tRestart current song\n");
 	fprintf(stderr, "  add <id1...>\tAdds songs to queue -- list song IDs on command line or on standard input (one per line)\n");
 	fprintf(stderr, "  search <query> Search for songs by full text matching of a query, output can be piped into add\n");
 	fprintf(stderr, "  where <expr>\tSearch for songs with a boolean query\n");
@@ -296,6 +302,8 @@ static gboolean server_watch(GIOChannel *source, GIOCondition condition, void *i
 	case CMD_NEXT:
 		next_action();
 		break;
+	case CMD_REWIND:
+		rewind_action();
 	case CMD_PREV:
 		prev_action();
 		break;
@@ -560,6 +568,9 @@ int main(int argc, char *argv[]) {
 		conn_and_send(cmd);
 	} else if (strcmp(argv[1], "next") == 0) {
 		int64_t cmd[] = { CMD_NEXT, 0 };
+		conn_and_send(cmd);
+	} else if (strcmp(argv[1], "rewind") == 0) {
+		int64_t cmd[] = { CMD_REWIND, 0 };
 		conn_and_send(cmd);
 	} else if (strcmp(argv[1], "prev") == 0) {
 		int64_t cmd[] = { CMD_PREV, 0 };
