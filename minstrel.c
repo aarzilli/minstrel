@@ -208,6 +208,9 @@ static void g_streamer_init(void) {
 
 static void g_streamer_begin(void) {
 	play = gst_element_factory_make("playbin2", "play");
+	gst_pipeline_set_delay(GST_PIPELINE(play), 2*GST_SECOND);
+
+	//printf("Default latency: %d\n", gst_pipeline_get_delay(GST_PIPELINE(play)));
 
 	GstBus *bus = gst_pipeline_get_bus(GST_PIPELINE(play));
 	gst_bus_add_watch(bus, bus_callback, loop);
