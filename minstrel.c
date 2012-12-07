@@ -289,6 +289,8 @@ static gboolean server_watch(GIOChannel *source, GIOCondition condition, void *i
 
 	size_t bytes_read = recvfrom(g_io_channel_unix_get_fd(source), (void *)command, sizeof(command), 0, &src_addr, &addrlen);
 
+	if (bytes_read != sizeof(command)) return TRUE;
+
 	//printf("\nControl interface: %zd [ %" PRId64 " %" PRId64 " ]\n", bytes_read, command[0], command[1]);
 
 	switch (command[0]) {
