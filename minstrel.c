@@ -307,6 +307,7 @@ static gboolean server_watch(GIOChannel *source, GIOCondition condition, void *i
 		break;
 	case CMD_REWIND:
 		rewind_action();
+		break;
 	case CMD_PREV:
 		prev_action();
 		break;
