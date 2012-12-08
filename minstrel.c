@@ -121,8 +121,24 @@ static void next_action(void) {
 }
 
 static void prev_action(void) {
-	if (queue_to_prev()) {
+	bool rewind = false;
+	GstState state, pending;
+	gst_element_get_state(play, &state, &pending, GST_SECOND);
+	if (state == GST_STATE_PLAYING) {
+		gint64 pos;
+		GstFormat fmt = GST_FORMAT_TIME;
+		if (gst_element_query_position(play, &fmt, &pos)) {
+			int64_t pos_secs = pos / 1000000000;
+			if (pos_secs > 5) rewind = true;
+		}
+	}
+
+	if (rewind) {
 		tunes_play(queue_currently_playing());
+	} else {
+		if (queue_to_prev()) {
+			tunes_play(queue_currently_playing());
+		}
 	}
 }
 
@@ -313,8 +329,7 @@ static gboolean server_watch(GIOChannel *source, GIOCondition condition, void *i
 	case CMD_PREV:
 		prev_action();
 		break;
-	case CMD_ADD:
-	{
+	case CMD_ADD: {
 		queue_append(command[1]);
 
 		sqlite3_stmt *tune_select;
