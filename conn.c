@@ -18,7 +18,7 @@ static void setaddr(struct sockaddr_un *address) {
 int conn(void) {
 	struct sockaddr_un address;
 	setaddr(&address);
-	
+
 	int fd = socket(PF_UNIX, SOCK_DGRAM, 0);
 	if (fd < 0) {
 		perror("Couldn't create a unix domain socket\n");
@@ -29,9 +29,9 @@ int conn(void) {
 		close(fd);
 		return -1;
 	}
-	
+
 	// Handshake
-	
+
 	int64_t hs[2] = { CMD_HANDSHAKE, 0 };
 	int r = send(fd, (void *)hs, sizeof(hs), 0);
 	if (r != sizeof(hs)) {
@@ -39,27 +39,27 @@ int conn(void) {
 		close(fd);
 		return -1;
 	}
-	
+
 	return fd;
 }
 
 int serve(void) {
 	struct sockaddr_un address;
 	setaddr(&address);
-	
+
 	unlink(address.sun_path);
-	
+
 	int fd = socket(PF_UNIX, SOCK_DGRAM, 0);
 	if (fd < 0) {
 		perror("Couldn't create a unix domain socket\n");
 		exit(EXIT_FAILURE);
 	}
-	
+
 	if (bind(fd, (struct sockaddr *) &address, sizeof(address)) != 0) {
 		perror("Couldn't open control socket");
 		exit(EXIT_FAILURE);
 	}
-	
+
 	return fd;
 }
 

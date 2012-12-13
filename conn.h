@@ -14,8 +14,8 @@ enum command_code {
 	CMD_STOP = 11,
 	CMD_NEXT = 12,
 	CMD_PREV = 13,
+	CMD_REWIND = 14,
 	CMD_ADD = 20,
-	CMD_REWIND = 30
 };
 
 #endif

@@ -342,6 +342,9 @@ static gboolean server_watch(GIOChannel *source, GIOCondition condition, void *i
 
 		break;
 	}
+
+	default:
+		printf("Received unknown command: %" PRId64 "\n", command[0]);
 	}
 
 	return TRUE;
