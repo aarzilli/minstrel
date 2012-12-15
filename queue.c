@@ -2,7 +2,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <strings.h>
+#include <string.h>
 
 #include <termcap.h>
 
@@ -97,7 +97,7 @@ static char *print_tune(sqlite3 *index_db, sqlite3_stmt *tune_select, struct ite
 
 		asprintf(&lyricist_link, "Lyrics (maybe): http://lyrics.wikia.com/%s:%s", sqlite3_column_text(tune_select, 1), sqlite3_column_text(tune_select, 12));
 
-		for (char *c = lyricist_link; *c != '\0'; ++c) {
+		for (char *c = lyricist_link + strlen("Lyrics (maybe): "); *c != '\0'; ++c) {
 			if (*c == ' ') *c = '_';
 		}
 	}
