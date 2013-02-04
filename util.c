@@ -125,3 +125,8 @@ int64_t checksum(const char *a) {
 
 	return r;
 }
+
+void putctlcod(const char *ctlcod, FILE *out) {
+	const char *x = tgetstr(ctlcod, NULL);
+	if (x != NULL) fputs(x, out);
+}

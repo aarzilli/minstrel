@@ -406,13 +406,13 @@ static void show_search_results(sqlite3_stmt *search_select) {
 
 		if (cur_cs != cs) {
 			fputs("\nFrom ", stdout);
-			fputs(tgetstr("md", NULL), stdout);
+			putctlcod("md", stdout);
 			fputs(cur_album, stdout);
-			fputs(tgetstr("me", NULL), stdout);
+			putctlcod("me", stdout);
 			fputs(" by ", stdout);
-			fputs(tgetstr("md", NULL), stdout);
+			putctlcod("md", stdout);
 			fputs(cur_artist, stdout);
-			fputs(tgetstr("me", NULL), stdout);
+			putctlcod("me", stdout);
 			fputs("\n", stdout);
 
 			cs = cur_cs;

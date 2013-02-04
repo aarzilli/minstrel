@@ -63,7 +63,7 @@ void advance_queue(sqlite3 *index_db) {
 }
 
 static void clear_screen(void) {
-	fputs(tgetstr("cl", NULL), stdout);
+	putctlcod("cl", stdout);
 }
 
 void go_to_tune(sqlite3 *index_db, sqlite3_stmt *tune_select, struct item *item) {
