@@ -224,7 +224,9 @@ static void g_streamer_init(void) {
 
 static void g_streamer_begin(void) {
 	play = gst_element_factory_make("playbin2", "play");
+#ifdef SLOW_LATENCY
 	gst_pipeline_set_delay(GST_PIPELINE(play), 2*GST_SECOND);
+#endif
 
 	//printf("Default latency: %d\n", gst_pipeline_get_delay(GST_PIPELINE(play)));
 
