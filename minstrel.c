@@ -127,7 +127,7 @@ static void prev_action(void) {
 	if (state == GST_STATE_PLAYING) {
 		gint64 pos;
 		GstFormat fmt = GST_FORMAT_TIME;
-		if (gst_element_query_position(play, &fmt, &pos)) {
+		if (gst_element_query_position(play, fmt, &pos)) {
 			int64_t pos_secs = pos / 1000000000;
 			if (pos_secs > 5) rewind = true;
 		}
@@ -183,7 +183,7 @@ static gboolean cb_print_position(void *none) {
 
 	GstFormat fmt = GST_FORMAT_TIME;
 	gint64 pos, len;
-	if (gst_element_query_position(play, &fmt, &pos) && gst_element_query_duration(play, &fmt, &len)) {
+	if (gst_element_query_position(play, fmt, &pos) && gst_element_query_duration(play, fmt, &len)) {
 		int64_t len_secs = len / 1000000000;
 		int64_t pos_secs = pos / 1000000000;
 
@@ -223,7 +223,7 @@ static void g_streamer_init(void) {
 }
 
 static void g_streamer_begin(void) {
-	play = gst_element_factory_make("playbin2", "play");
+	play = gst_element_factory_make("playbin", "play");
 #ifdef SLOW_LATENCY
 	gst_pipeline_set_delay(GST_PIPELINE(play), 2*GST_SECOND);
 #endif

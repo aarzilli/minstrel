@@ -97,12 +97,12 @@ index_file_ex_failure:
 static void index_file(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stmt *rinsert, const char *filename) {
 	AVFormatContext *fmt_ctx = NULL;
 
-	if (av_open_input_file(&fmt_ctx, filename, NULL, 0, NULL)) {
+	if (avformat_open_input(&fmt_ctx, filename, NULL, NULL)) {
 		fprintf(stderr, "Failed to open %s\n", filename);
 		exit(EXIT_FAILURE);
 	}
 
-	av_metadata_conv(fmt_ctx, NULL, fmt_ctx->iformat->metadata_conv);
+	//ff_metadata_conv(fmt_ctx, NULL, fmt_ctx->iformat->metadata_conv);
 
 	const char *album = tag_get(fmt_ctx, "album");
 	const char *artist = tag_get(fmt_ctx, "artist");
@@ -157,7 +157,7 @@ static void index_file(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stmt *ri
 		genre, performer, publisher,
 		title, track);
 
-	av_close_input_file(fmt_ctx);
+	avformat_close_input(&fmt_ctx);
 }
 
 static void index_directory(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stmt *rinsert, char *dir_name) {

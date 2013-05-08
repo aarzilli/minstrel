@@ -38,8 +38,8 @@ bool strstart(const char *haystack, const char *needle) {
 }
 
 const char *tag_get(AVFormatContext *fmt_ctx, const char *key) {
-	AVMetadataTag *tag = NULL;
-	tag = av_metadata_get(fmt_ctx->metadata, key, NULL, AV_METADATA_IGNORE_SUFFIX);
+	AVDictionaryEntry *tag = NULL;
+	tag = av_dict_get(fmt_ctx->metadata, key, NULL, AV_DICT_IGNORE_SUFFIX);
 	if (tag == NULL) return NULL;
 	return tag->value;
 }
