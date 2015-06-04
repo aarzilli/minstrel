@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <ctype.h>
 
 #include <gst/gst.h>
 #include <sqlite3.h>
@@ -39,7 +40,7 @@ void do_notify(sqlite3_stmt *tune_select) {
 	go_to_tune(player_index_db, tune_select, queue_currently_playing());
 
 	char *text = NULL;
-	asprintf(&text, "%s from %s by %s", sqlite3_column_text(tune_select, 12), sqlite3_column_text(tune_select, 0), sqlite3_column_text(tune_select, 1));
+	asprintf(&text, "from %s by %s", sqlite3_column_text(tune_select, 0), sqlite3_column_text(tune_select, 1));
 	oomp(text);
 	notify_notification_update(notification, (const char *)sqlite3_column_text(tune_select, 12), text, NULL);
 	GError *error = NULL;
@@ -419,9 +420,9 @@ static void show_search_results(sqlite3_stmt *search_select) {
 		}
 
 		printf("%" PRId64 "\t%2d. ", (int64_t)sqlite3_column_int64(search_select, 15), sqlite3_column_int(search_select, 13));
-		fputs(tgetstr("md", NULL), stdout);
+		putctlcod("md", stdout);
 		fputs((const char *)sqlite3_column_text(search_select, 12), stdout);
-		fputs(tgetstr("me", NULL), stdout);
+		putctlcod("me", stdout);
 		fputs("\n", stdout);
 	}
 }
