@@ -10,7 +10,7 @@
 
 #include "util.h"
 
-const char *KNOWN_AUDIO_EXTENSIONS[] = { "aif", "aiff", "m4a", "mid", "mp3", "mpa", "ra", "wav", "wma", "aac", "mp4", "m4p", "m4r", "3gp", "ogg", "oga", "au", "3ga", "aifc", "aifr", "alac", "caf", "caff" };
+const char *KNOWN_AUDIO_EXTENSIONS[] = { "aif", "aiff", "m4a", "mid", "mp3", "mpa", "ra", "wav", "wma", "aac", "mp4", "m4p", "m4r", "3gp", "ogg", "oga", "au", "3ga", "aifc", "aifr", "alac", "caf", "caff", "opus" };
 
 static bool should_autoindex_file(const char *full_file_name) {
 	char *dot = strrchr(full_file_name, '.');
@@ -38,31 +38,23 @@ static bool should_autoindex_file(const char *full_file_name) {
 	return r;
 }
 
-static void index_file_ex(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stmt *rinsert, const char *filename,
+typedef struct _insert_statements {
+	sqlite3_stmt *insert;
+	sqlite3_stmt *rinsert;
+	sqlite3_stmt *check;
+} insert_statements;
+
+static void index_file_ex(sqlite3 *index_db, insert_statements s, const char *filename,
 		const char *album, const char *artist, const char *album_artist,
 		const char *comment, const char *composer, const char *copyright,
 		const char *date, const char *disc, const char *encoder,
 		const char *genre, const char *performer, const char *publisher,
 		const char *title, const char *track) {
 
-	if (sqlite3_reset(insert) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_reset(rinsert) != SQLITE_OK) goto index_file_ex_failure;
-
-	if (sqlite3_bind_text(insert, 1, album, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 2, artist, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 3, album_artist, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 4, comment, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 5, composer, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 6, copyright, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 7, date, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 8, disc, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 9, encoder, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 10, genre, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 11, performer, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 12, publisher, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 13, title, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(insert, 14, track, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-
+	if (sqlite3_reset(s.insert) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_reset(s.rinsert) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_reset(s.check) != SQLITE_OK) goto index_file_ex_failure;
+	
 	GError *error = NULL;
 	char *fileuri = g_filename_to_uri(filename, NULL, &error);
 	if (fileuri == NULL) {
@@ -70,19 +62,40 @@ static void index_file_ex(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stmt 
 		g_error_free(error);
 		exit(EXIT_FAILURE);
 	}
+	
+	if (sqlite3_bind_text(s.check, 1, fileuri, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	
+	if (sqlite3_step(s.check) != SQLITE_DONE) {
+		return;
+	}
 
-	if (sqlite3_bind_text(insert, 15, fileuri, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(s.insert, 1, album, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(s.insert, 2, artist, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(s.insert, 3, album_artist, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(s.insert, 4, comment, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(s.insert, 5, composer, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(s.insert, 6, copyright, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(s.insert, 7, date, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(s.insert, 8, disc, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(s.insert, 9, encoder, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(s.insert, 10, genre, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(s.insert, 11, performer, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(s.insert, 12, publisher, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(s.insert, 13, title, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(s.insert, 14, track, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+
+	if (sqlite3_bind_text(s.insert, 15, fileuri, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+
+	if (sqlite3_step(s.insert) != SQLITE_DONE) goto index_file_ex_failure;
 	g_free(fileuri);
-
-	if (sqlite3_step(insert) != SQLITE_DONE) goto index_file_ex_failure;
 
 	char *text;
 	asprintf(&text, "%s %s %s %s %s %s %s %s %s %s %s %s %s", album, artist, album_artist, comment, composer, copyright, date, disc, encoder, performer, publisher, title, track);
 	oomp(text);
 
-	if (sqlite3_bind_int64(rinsert, 1, sqlite3_last_insert_rowid(index_db)) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_bind_text(rinsert, 2, text, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
-	if (sqlite3_step(rinsert) != SQLITE_DONE) goto index_file_ex_failure;
+	if (sqlite3_bind_int64(s.rinsert, 1, sqlite3_last_insert_rowid(index_db)) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_bind_text(s.rinsert, 2, text, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto index_file_ex_failure;
+	if (sqlite3_step(s.rinsert) != SQLITE_DONE) goto index_file_ex_failure;
 
 	free(text);
 
@@ -94,7 +107,7 @@ index_file_ex_failure:
 	exit(EXIT_FAILURE);
 }
 
-static void index_file(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stmt *rinsert, const char *filename) {
+static void index_file(sqlite3 *index_db, insert_statements s, const char *filename) {
 	AVFormatContext *fmt_ctx = NULL;
 
 	if (avformat_open_input(&fmt_ctx, filename, NULL, NULL)) {
@@ -150,7 +163,7 @@ static void index_file(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stmt *ri
 	printf("   track: %s\n", track);
 #endif
 
-	index_file_ex(index_db, insert, rinsert, filename,
+	index_file_ex(index_db, s, filename,
 		album, artist, album_artist,
 		comment, composer, copyright,
 		date, disc, encoder,
@@ -160,7 +173,7 @@ static void index_file(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stmt *ri
 	avformat_close_input(&fmt_ctx);
 }
 
-static void index_directory(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stmt *rinsert, char *dir_name) {
+static void index_directory(sqlite3 *index_db, insert_statements s, char *dir_name) {
 	DIR *dir = opendir(dir_name);
 	if (dir == NULL) {
 		fprintf(stderr, "Can not index %s, can not open directory\n", dir_name);
@@ -173,7 +186,7 @@ static void index_directory(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stm
 			char *new_dir_name;
 			asprintf(&new_dir_name, "%s/%s", dir_name, curent->d_name);
 			oomp(new_dir_name);
-			index_directory(index_db, insert, rinsert, new_dir_name);
+			index_directory(index_db, s, new_dir_name);
 			free(new_dir_name);
 		} else if (curent->d_type == DT_REG) {
 			char *full_file_name;
@@ -182,7 +195,7 @@ static void index_directory(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stm
 			oomp(full_file_name);
 
 			if (should_autoindex_file(full_file_name)) {
-				index_file(index_db, insert, rinsert, full_file_name);
+				index_file(index_db, s, full_file_name);
 			} else {
 				fprintf(stderr, "Didn't add %s to index, add manually if desired\n", full_file_name);
 			}
@@ -196,11 +209,11 @@ static void index_directory(sqlite3 *index_db, sqlite3_stmt *insert, sqlite3_stm
 }
 
 void index_command(char *dirs[], int dircount) {
-	sqlite3 *index_db = open_or_create_index_db(true);
+	sqlite3 *index_db = open_or_create_index_db();
 
 	av_register_all();
 
-	sqlite3_stmt *insert = NULL, *rinsert = NULL;
+	sqlite3_stmt *insert = NULL, *rinsert = NULL, *check = NULL;
 
 	int r = sqlite3_prepare_v2(index_db, "insert into tunes(album, artist, album_artist, comment, composer, copyright, date, disc, encoder, genre, performer, publisher, title, track, filename) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", -1, &insert, NULL);
 	if (r != SQLITE_OK) {
@@ -213,7 +226,15 @@ void index_command(char *dirs[], int dircount) {
 		fprintf(stderr, "Sqlite3 error preparing rinsert statement: %s\n", sqlite3_errmsg(index_db));
 		exit(EXIT_FAILURE);
 	}
-
+	
+	r = sqlite3_prepare_v2(index_db, "select * from tunes where filename = ?;", -1, &check, NULL);
+	if (r != SQLITE_OK) {
+		fprintf(stderr, "Sqlite3 error preparing chekc statement: %s\n", sqlite3_errmsg(index_db));
+		exit(EXIT_FAILURE);
+	}
+	
+	insert_statements ins = { insert, rinsert, check };
+	
 	for (int i = 0; i < dircount; ++i) {
 		struct stat s;
 
@@ -225,9 +246,9 @@ void index_command(char *dirs[], int dircount) {
 		}
 
 		if (S_ISDIR(s.st_mode)) {
-			index_directory(index_db, insert, rinsert, dirs[i]);
+			index_directory(index_db, ins, dirs[i]);
 		} else {
-			index_file(index_db, insert, rinsert, dirs[i]);
+			index_file(index_db, ins, dirs[i]);
 		}
 	}
 

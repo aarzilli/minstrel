@@ -44,7 +44,7 @@ const char *tag_get(AVFormatContext *fmt_ctx, const char *key) {
 	return tag->value;
 }
 
-sqlite3 *open_or_create_index_db(bool truncate_tunes) {
+sqlite3 *open_or_create_index_db() {
 	char *errmsg;
 	int r;
 	sqlite3 *index_db;
@@ -87,14 +87,6 @@ sqlite3 *open_or_create_index_db(bool truncate_tunes) {
 
 	if (!sqlite3_has_table(index_db, "ridx")) {
 		sqlite3_exec(index_db, "CREATE VIRTUAL TABLE ridx USING fts3(id integer, any text, foreign key (id) references tunes(id) on delete cascade deferrable initially deferred);", NULL, NULL, &errmsg);
-		if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
-	}
-
-	if (truncate_tunes) {
-		sqlite3_exec(index_db, "DELETE FROM tunes;", NULL, NULL, &errmsg);
-		if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
-
-		sqlite3_exec(index_db, "DELETE FROM ridx;", NULL, NULL, &errmsg);
 		if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;
 	}
 

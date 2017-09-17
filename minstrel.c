@@ -365,7 +365,7 @@ static void start_player(void) {
 
 	term_init();
 	queue_init();
-	player_index_db = open_or_create_index_db(false);
+	player_index_db = open_or_create_index_db();
 
 #ifdef USE_LIBNOTIFY
 	if (!notify_init(APPNAME)) {
@@ -444,7 +444,7 @@ static void search_command(char *terms[], int n) {
 	}
 
 	term_init();
-	player_index_db = open_or_create_index_db(false);
+	player_index_db = open_or_create_index_db();
 
 	sqlite3_stmt *search_select;
 	if (sqlite3_prepare_v2(player_index_db, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename, tunes.id from tunes, ridx where tunes.id = ridx.id and any match ? order by artist, album, cast(track as integer) asc", -1, &search_select, NULL) != SQLITE_OK) goto search_sqlite3_failure;
@@ -482,7 +482,7 @@ search_sqlite3_failure:
 
 static void where_command(const char *clause) {
 	term_init();
-	player_index_db = open_or_create_index_db(false);
+	player_index_db = open_or_create_index_db();
 
 	char *query;
 
@@ -555,7 +555,7 @@ static void addlast_command(void) {
 		exit(EXIT_FAILURE);
 	}
 
-	player_index_db = open_or_create_index_db(false);
+	player_index_db = open_or_create_index_db();
 
 	sqlite3_stmt *select;
 	if (sqlite3_prepare_v2(player_index_db, "SELECT id FROM search_save ORDER BY counter;", -1, &select, NULL) != SQLITE_OK) goto addlast_command_sqlite3_failure;
