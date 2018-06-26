@@ -44,31 +44,37 @@ const char *tag_get(AVFormatContext *fmt_ctx, const char *key) {
 	return tag->value;
 }
 
+sqlite3 *open_or_create_db(char *name) {
+	sqlite3 *db;
+	int r;
+
+	char *index_file_name;
+	if (getenv("XDG_CONFIG_HOME") != NULL) {
+		asprintf(&index_file_name, "%s/minstrel/%s", getenv("XDG_CONFIG_HOME"), name);
+	} else {
+		asprintf(&index_file_name, "%s/.config/minstrel/%s", getenv("HOME"), name);
+	}
+	oomp(index_file_name);
+
+	r = sqlite3_open_v2(index_file_name, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, NULL);
+
+	oomp(db);
+
+	if (r != SQLITE_OK) {
+		fprintf(stderr, "Failed to open/create index file: %s\n", sqlite3_errmsg(db));
+		exit(EXIT_FAILURE);
+	}
+
+	free(index_file_name);
+
+	return db;
+}
+
 sqlite3 *open_or_create_index_db() {
 	char *errmsg;
-	int r;
 	sqlite3 *index_db;
 
-	{
-		char *index_file_name;
-		if (getenv("XDG_CONFIG_HOME") != NULL) {
-			asprintf(&index_file_name, "%s/minstrel/db", getenv("XDG_CONFIG_HOME"));
-		} else {
-			asprintf(&index_file_name, "%s/.config/minstrel/db", getenv("HOME"));
-		}
-		oomp(index_file_name);
-
-		r = sqlite3_open_v2(index_file_name, &index_db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, NULL);
-
-		oomp(index_db);
-
-		if (r != SQLITE_OK) {
-			fprintf(stderr, "Failed to open/create index file: %s\n", sqlite3_errmsg(index_db));
-			exit(EXIT_FAILURE);
-		}
-
-		free(index_file_name);
-	}
+	index_db =  open_or_create_db("db");
 
 	sqlite3_exec(index_db, "pragma foreign_keys = on;", NULL, NULL, &errmsg);
 	if (errmsg != NULL) goto open_or_create_index_db_sqlite3_failure;

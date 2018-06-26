@@ -20,6 +20,10 @@ void queue_init(void) {
 
 void queue_append(int64_t id) {
 	//printf("appending to %d\n", queue_position);
+	if (queue_position >= QUEUE_LENGTH) {
+		fprintf(stderr, "can not add anything anymore\n");
+		return;
+	}
 	queue[queue_position].occupied = true;
 	queue[queue_position].played = false;
 	queue[queue_position].id = id;
@@ -68,9 +72,9 @@ static void clear_screen(void) {
 	putctlcod("cl", stdout);
 }
 
-void go_to_tune(sqlite3 *index_db, sqlite3_stmt *tune_select, struct item *item) {
+void go_to_tune(sqlite3 *index_db, sqlite3_stmt *tune_select, int64_t id) {
 	if (sqlite3_reset(tune_select) != SQLITE_OK) goto print_tune_sqlite_failure;
-	if (sqlite3_bind_int64(tune_select, 1, item->id) != SQLITE_OK) goto print_tune_sqlite_failure;
+	if (sqlite3_bind_int64(tune_select, 1, id) != SQLITE_OK) goto print_tune_sqlite_failure;
 	if (sqlite3_step(tune_select) != SQLITE_ROW) goto print_tune_sqlite_failure;
 
 	return;
@@ -81,10 +85,10 @@ print_tune_sqlite_failure:
 	exit(EXIT_FAILURE);
 }
 
-static char *print_tune(sqlite3 *index_db, sqlite3_stmt *tune_select, struct item *item, bool current, int idx) {
+char *print_tune(sqlite3 *index_db, sqlite3_stmt *tune_select, int64_t id, bool current, int idx) {
 	char *lyricist_link = NULL;
 
-	go_to_tune(index_db, tune_select, item);
+	go_to_tune(index_db, tune_select, id);
 
 	if (current) {
 		FILE *f = fopen("/tmp/minstrel.currently", "w");
@@ -108,7 +112,7 @@ static char *print_tune(sqlite3 *index_db, sqlite3_stmt *tune_select, struct ite
 		printf(" %c %d. %s\n", current ? '>' : ' ', idx, sqlite3_column_text(tune_select, 12));
 		printf(" %c\tby %s from %s [%s]\n", current ? '>' : ' ', sqlite3_column_text(tune_select, 1), sqlite3_column_text(tune_select, 0), sqlite3_column_text(tune_select, 13));
 	} else {
-		printf("%ld   %s\n", item->id, sqlite3_column_text(tune_select, 12));
+		printf("%ld   %s\n", id, sqlite3_column_text(tune_select, 12));
 		printf("       by %s from %s [%s]\n", sqlite3_column_text(tune_select, 1), sqlite3_column_text(tune_select, 0), sqlite3_column_text(tune_select, 13));
 	}
 
@@ -135,16 +139,16 @@ void display_queue(sqlite3 *index_db, sqlite3_stmt *tune_select) {
 
 	for (int i = start_off-1; i > 0; --i) {
 		int idx = (queue_currently_playing_idx - i) % QUEUE_LENGTH;
-		print_tune(index_db, tune_select, queue + idx, false, idx);
+		print_tune(index_db, tune_select, queue[idx].id, false, idx);
 	}
 
-	char *lyricist_link = print_tune(index_db, tune_select, queue_currently_playing(), true, queue_currently_playing_idx);
+	char *lyricist_link = print_tune(index_db, tune_select, queue_currently_playing()->id, true, queue_currently_playing_idx);
 
 	for (int i = 1; i < DISPLAY_AFTER_CURRENT; ++i) {
 		int idx = (queue_currently_playing_idx + i) % QUEUE_LENGTH;
 		if (!queue[idx].occupied) break;
 		if (queue[idx].played) break;
-		print_tune(index_db, tune_select, queue + idx, false, idx);
+		print_tune(index_db, tune_select, queue[idx].id, false, idx);
 	}
 
 	sqlite3_reset(tune_select);

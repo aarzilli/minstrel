@@ -16,6 +16,7 @@
 #include "index.h"
 #include "queue.h"
 #include "conn.h"
+#include "stats.h"
 
 #ifdef USE_LIBNOTIFY
 #include <libnotify/notify.h>
@@ -37,7 +38,7 @@ NotifyNotification *notification;
 
 void do_notify(sqlite3_stmt *tune_select) {
 #ifdef USE_LIBNOTIFY
-	go_to_tune(player_index_db, tune_select, queue_currently_playing());
+	go_to_tune(player_index_db, tune_select, queue_currently_playing()->id);
 
 	char *text = NULL;
 	asprintf(&text, "from %s by %s", sqlite3_column_text(tune_select, 0), sqlite3_column_text(tune_select, 1));
@@ -51,6 +52,10 @@ void do_notify(sqlite3_stmt *tune_select) {
 	}
 	free(text);
 #endif
+}
+
+static int prepare_tune_select(sqlite3_stmt **tune_select) {
+	return sqlite3_prepare_v2(player_index_db, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename from tunes where id = ?", -1, tune_select, NULL);
 }
 
 bool tunes_play(struct item *item) {
@@ -77,7 +82,7 @@ bool tunes_play(struct item *item) {
 	sqlite3_finalize(get_filename);
 
 	sqlite3_stmt *tune_select;
-	if (sqlite3_prepare_v2(player_index_db, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename from tunes where id = ?", -1, &tune_select, NULL) != SQLITE_OK) goto tunes_play_sqlite3_failure;
+	if (prepare_tune_select(&tune_select) != SQLITE_OK) goto tunes_play_sqlite3_failure;
 
 	display_queue(player_index_db, tune_select);
 
@@ -164,8 +169,15 @@ static gboolean bus_callback(GstBus *bus, GstMessage *message, gpointer data) {
 		}
 
 		case GST_MESSAGE_EOS:
+		{
+			sqlite3_stmt *tune_select;
+			if (prepare_tune_select(&tune_select) == SQLITE_OK) {
+				increment_listened(player_index_db, tune_select, queue_currently_playing()->id);
+				sqlite3_finalize(tune_select);
+			}
 			next_action();
 			break;
+		}
 
 		default:
 			// unhandled message
@@ -336,9 +348,10 @@ static gboolean server_watch(GIOChannel *source, GIOCondition condition, void *i
 		queue_append(command[1]);
 
 		sqlite3_stmt *tune_select;
-		if (sqlite3_prepare_v2(player_index_db, "select trim(album), trim(artist), trim(album_artist), trim(comment), trim(composer), trim(copyright), trim(date), trim(disc), trim(encoder), trim(genre), trim(performer), trim(publisher), trim(title), trim(track), filename from tunes where id = ?", -1, &tune_select, NULL) != SQLITE_OK) {
+		if (prepare_tune_select(&tune_select) != SQLITE_OK) {
 			fprintf(stderr, "Sqlite3 error adding to queue: %s\n", sqlite3_errmsg(player_index_db));
 		} else {
+			increment_added(player_index_db, tune_select, command[1]);
 			display_queue(player_index_db, tune_select);
 			sqlite3_finalize(tune_select);
 		}
@@ -365,6 +378,7 @@ static void start_player(void) {
 
 	term_init();
 	queue_init();
+	rating_init();
 	player_index_db = open_or_create_index_db();
 
 #ifdef USE_LIBNOTIFY
@@ -577,6 +591,62 @@ addlast_command_sqlite3_failure:
 	close(fd);
 }
 
+#define PAGESZ 20
+
+static void most_command(const char *kind, char *args[], int n) {
+	char *sort_query = NULL;
+	int page = 0;
+
+	player_index_db = open_or_create_index_db();
+	rating_init();
+
+	if (n > 0) {
+		page = atoi(args[0]);
+		if (page < 0) {
+			page = 0;
+		}
+	}
+
+	sqlite3_stmt *sort_stmt, *tune_select, *find_id_stmt;
+
+	asprintf(&sort_query, "SELECT filename, %s FROM rating ORDER BY %s DESC LIMIT %d OFFSET %d;", kind, kind, PAGESZ, page*PAGESZ);
+	oomp(sort_query);
+
+	if (prepare_tune_select(&tune_select) != SQLITE_OK) goto most_command_failed;
+	if (sqlite3_prepare_v2(rating_db, sort_query, -1, &sort_stmt, NULL) != SQLITE_OK) goto most_command_failed;
+	if (sqlite3_prepare_v2(player_index_db, "SELECT id FROM tunes WHERE filename = ?;", -1, &find_id_stmt, NULL) != SQLITE_OK) goto most_command_failed;
+
+	while (sqlite3_step(sort_stmt) == SQLITE_ROW) {
+		int64_t id;
+		const char *filename = (const char *)sqlite3_column_text(sort_stmt, 0);
+		int64_t count = sqlite3_column_int64(sort_stmt, 1);
+
+		sqlite3_reset(find_id_stmt);
+		if (sqlite3_bind_text(find_id_stmt, 1, filename, -1, SQLITE_TRANSIENT) != SQLITE_OK) {
+			printf("%ld. UNKNOWN FILE %s\n", count, filename);
+			continue;
+		}
+		if (sqlite3_step(find_id_stmt) != SQLITE_ROW) {
+			printf("%ld. UNKNOWN FILE %s\n", count, filename);
+			continue;
+		}
+		id = sqlite3_column_int64(find_id_stmt, 0);
+
+		print_tune(player_index_db, tune_select, id, false, count);
+	}
+
+	sqlite3_finalize(tune_select);
+	sqlite3_finalize(sort_stmt);
+	sqlite3_finalize(find_id_stmt);
+	free(sort_query);
+
+	return;
+
+most_command_failed:
+	fprintf(stderr, "most failed\n");
+	return;
+}
+
 int main(int argc, char *argv[]) {
 	if (argc < 2) {
 		usage();
@@ -617,6 +687,10 @@ int main(int argc, char *argv[]) {
 		}
 	} else if (strcmp(argv[1], "addlast") == 0) {
 		addlast_command();
+	} else if (strcmp(argv[1],  "most-added") == 0) {
+		most_command("added", argv+2, argc-2);
+	} else if (strcmp(argv[1], "most-listened") == 0) {
+		most_command("listened", argv+2, argc-2);
 	} else if (strcmp(argv[1], "help") == 0) {
 		usage();
 	} else {
