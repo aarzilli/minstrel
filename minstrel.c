@@ -10,7 +10,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <termcap.h>
 
 #include "util.h"
 #include "index.h"
@@ -386,6 +385,7 @@ static void start_player(void) {
 		fprintf(stderr, "Notify initialization failed\n");
 	}
 	notification = notify_notification_new("blap", "", NULL);
+	notify_notification_set_urgency(notification, NOTIFY_URGENCY_LOW);
 #endif
 
 	g_streamer_init();

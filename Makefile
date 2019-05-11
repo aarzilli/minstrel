@@ -2,7 +2,7 @@
 # -DSLOW_LATENCY for slow latency
 
 CFLAGS=`pkg-config --cflags gstreamer-1.0` `pkg-config --cflags gio-2.0` `pkg-config --cflags libavformat` `pkg-config --cflags libavutil` -Wall -g -D_GNU_SOURCE --std=c99 `pkg-config --cflags libnotify` -DUSE_LIBNOTIFY
-LIBS=`pkg-config --libs gstreamer-1.0` `pkg-config --libs gio-2.0` `pkg-config --libs libavformat` `pkg-config --libs libavutil` -lsqlite3 -ltermcap `pkg-config --libs libnotify`
+LIBS=`pkg-config --libs gstreamer-1.0` `pkg-config --libs gio-2.0` `pkg-config --libs libavformat` `pkg-config --libs libavutil` -lsqlite3 `pkg-config --libs libnotify`
 OBJS=minstrel.o util.o index.o queue.o conn.o stats.o
 
 all: minstrel

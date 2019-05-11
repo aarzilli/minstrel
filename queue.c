@@ -6,8 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <termcap.h>
-
 struct item queue[QUEUE_LENGTH];
 int queue_position;
 int queue_currently_playing_idx;

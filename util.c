@@ -2,7 +2,7 @@
 
 #include <stdlib.h>
 
-#include <termcap.h>
+bool dumb_terminal;
 
 void oomp(void *ptr) {
 	if (ptr == NULL) {
@@ -108,9 +108,9 @@ open_or_create_index_db_sqlite3_failure:
 
 void term_init(void) {
 	char *termenv = getenv("TERM");
-
-	if (termenv == NULL) return;
-	if (tgetent(NULL, termenv) < 0) return;
+	if ((strcmp(termenv, "dumb") == 0) || strcmp(termenv, "") == 0) {
+		dumb_terminal = true;
+	}
 }
 
 int64_t checksum(const char *a) {
@@ -125,6 +125,17 @@ int64_t checksum(const char *a) {
 }
 
 void putctlcod(const char *ctlcod, FILE *out) {
-	const char *x = tgetstr(ctlcod, NULL);
-	if (x != NULL) fputs(x, out);
+	if (dumb_terminal) {
+		return;
+	}
+	if (strcmp(ctlcod, "md") == 0) {
+		// select bold
+		fputs("\x1b[1m", out);
+	} else if (strcmp(ctlcod, "me") == 0) {
+		// select normal
+		fputs("\x1b[0m", out);
+	} else if (strcmp(ctlcod, "cl") == 0) {
+		// clear entire screen
+		fputs("\x1b[H\x1b[0J", out);
+	}
 }
