@@ -109,9 +109,11 @@ index_file_ex_failure:
 
 static void index_file(sqlite3 *index_db, insert_statements s, const char *filename) {
 	AVFormatContext *fmt_ctx = NULL;
+	
+	int averr = avformat_open_input(&fmt_ctx, filename, NULL, NULL);
 
-	if (avformat_open_input(&fmt_ctx, filename, NULL, NULL)) {
-		fprintf(stderr, "Failed to open %s\n", filename);
+	if (averr) {
+		fprintf(stderr, "Failed to open %s: %x\n", filename, (unsigned int)averr);
 		exit(EXIT_FAILURE);
 	}
 

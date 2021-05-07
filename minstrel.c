@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <fcntl.h>
 
 #include "util.h"
 #include "index.h"
@@ -35,14 +36,66 @@ guint serve_channel_source_id;
 NotifyNotification *notification;
 #endif
 
+#define MINSTREL_PIC "/dev/shm/minstrel-pic.png"
+
 void do_notify(sqlite3_stmt *tune_select) {
 #ifdef USE_LIBNOTIFY
 	go_to_tune(player_index_db, tune_select, queue_currently_playing()->id);
+	
+	const char *picok = NULL;
+	
+	const char *uri = (const char *)sqlite3_column_text(tune_select, 14);
+	const char *filename = g_filename_from_uri(uri, NULL, NULL);
+	
+	printf("processing %s\n", filename);
+	
+	if (filename != NULL) {
+		// get thumbnail
+		
+		AVFormatContext *fmt_ctx = NULL;
+		int averr = avformat_open_input(&fmt_ctx, (const char *)filename, NULL, NULL);
+		
+		if (averr == 0) {
+			uint8_t *picdata = NULL;
+			int picsize;
+			
+			for (int i = 0; i < fmt_ctx->nb_streams; ++i) {
+				AVStream *stream = fmt_ctx->streams[i];
+				if (stream->disposition != AV_DISPOSITION_ATTACHED_PIC) {
+					continue;
+				}
+				picdata = stream->attached_pic.data;
+				picsize = stream->attached_pic.size;
+			}
+			
+			picok = MINSTREL_PIC;
+			
+			if (picdata != NULL) {
+				int fd = creat(MINSTREL_PIC, 0666);
+				if (fd) {
+					while(picsize > 0) {
+						size_t n = write(fd, picdata, picsize);
+						if (n < 0) {
+							picok = NULL;
+							break;
+						}
+						picsize -= n;
+						picdata += picsize;
+					}
+					close(fd);
+				}
+			}
+			
+			avformat_close_input(&fmt_ctx);
+		}
+		g_free((char *)filename);
+		
+	}
 
 	char *text = NULL;
 	asprintf(&text, "from %s by %s", sqlite3_column_text(tune_select, 0), sqlite3_column_text(tune_select, 1));
 	oomp(text);
-	notify_notification_update(notification, (const char *)sqlite3_column_text(tune_select, 12), text, NULL);
+	notify_notification_update(notification, (const char *)sqlite3_column_text(tune_select, 12), text, picok);
 	GError *error = NULL;
 	if (!notify_notification_show(notification, &error)) {
 		fprintf(stderr, "Error displaying notification: %s\n", error->message);
@@ -386,6 +439,7 @@ static void start_player(void) {
 	}
 	notification = notify_notification_new("blap", "", NULL);
 	notify_notification_set_urgency(notification, NOTIFY_URGENCY_LOW);
+	av_register_all(); // to get thumbnails
 #endif
 
 	g_streamer_init();
