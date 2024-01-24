@@ -47,8 +47,6 @@ void do_notify(sqlite3_stmt *tune_select) {
 	const char *uri = (const char *)sqlite3_column_text(tune_select, 14);
 	const char *filename = g_filename_from_uri(uri, NULL, NULL);
 	
-	printf("processing %s\n", filename);
-	
 	if (filename != NULL) {
 		// get thumbnail
 		
@@ -292,6 +290,12 @@ static void g_streamer_begin(void) {
 #ifdef SLOW_LATENCY
 	gst_pipeline_set_delay(GST_PIPELINE(play), 2*GST_SECOND);
 #endif
+
+	int flags;
+	g_object_get(play, "flags", &flags, NULL);
+	flags &= ~0x1; // no video
+	flags &= ~0x4; // no text
+	g_object_set(play, "flags", flags, NULL);
 
 	//printf("Default latency: %d\n", gst_pipeline_get_delay(GST_PIPELINE(play)));
 
